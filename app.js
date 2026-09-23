@@ -2,14 +2,16 @@
 'use strict';
 
 const KEY = 'relaisz_v1';
-const PTS = { main: 3, noTurn: 3, faster: 4, equal: 3, slower: 0 };
-const NB_PASSAGES = 4;
+const PTS = { main: 3, noTurn: 3 };
+const nbP = () => Math.min(5, Math.max(3, S.settings.nbPass ?? 4)); // passages retenus (3 à 5)
 
 /* ---------------- état & stockage ---------------- */
 const S = load();
+// migration v1.2 : note vitesse plancher 2, nombre de passages réglable
+if (S.settings.v !== 2) { S.settings.floor = 2; S.settings.nbPass = S.settings.nbPass ?? 4; S.settings.v = 2; }
 function load() {
   try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && d.classes) return d; } catch (e) {}
-  return { settings: { total: 80, zt: 20, tol: 3, floor: 0 }, classes: [], cur: null };
+  return { settings: { total: 80, zt: 20, floor: 2, nbPass: 4, v: 2 }, classes: [], cur: null };
 }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
@@ -24,6 +26,18 @@ const fnum = (n, d = 2) => n.toFixed(d).replace('.', ',');
 const cls = () => S.classes.find(c => c.id === S.cur) || null;
 const stu = (c, id) => c.students.find(s => s.id === id);
 const fullName = s => s ? `${s.nom} ${s.prenom}`.trim() : '(élève supprimé)';
+const cap = w => w ? w.charAt(0).toLocaleUpperCase('fr') + w.slice(1).toLocaleLowerCase('fr') : '';
+const norm = w => (w || '').toLocaleLowerCase('fr');
+// « Prénom N. » ; si deux élèves ont le même prénom et la même initiale, on ajoute des lettres (Lucas Ma. / Lucas Mo.)
+function dn(c, id) {
+  const s = stu(c, id); if (!s) return '(élève supprimé)';
+  if (!s.prenom) return s.nom;
+  const nom = s.nom.replace(/\s+/g, '');
+  let k = 1;
+  const twins = c.students.filter(o => o.id !== s.id && norm(o.prenom) === norm(s.prenom));
+  while (k < nom.length && twins.some(o => norm(o.nom.replace(/\s+/g, '')).startsWith(norm(nom.slice(0, k))))) k++;
+  return `${s.prenom} ${cap(nom.slice(0, k))}.`;
+}
 
 function toast(msg) {
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
@@ -52,20 +66,28 @@ function passagesOf(c, sid) {
 }
 function noteOf(c, sid) {
   const sc = passagesOf(c, sid).map(p => p.score);
-  const kept = sc.length > NB_PASSAGES ? [...sc].sort((a, b) => b - a).slice(0, NB_PASSAGES) : sc;
+  const kept = sc.length > nbP() ? [...sc].sort((a, b) => b - a).slice(0, nbP()) : sc;
   const sum = kept.reduce((a, b) => a + b, 0);
-  return { n: sc.length, scores: sc, note: sum / NB_PASSAGES };
+  return { n: sc.length, scores: sc, note: sum / nbP() };
 }
-function speedPoints(vZt, vR, tol) {
-  const diff = (vZt - vR) / vR * 100;
-  if (Math.abs(diff) <= tol) return { pts: PTS.equal, key: 'equal', diff };
-  return diff > 0 ? { pts: PTS.faster, key: 'faster', diff } : { pts: PTS.slower, key: 'slower', diff };
+// Écart de vitesse Zt / hors Zt, en % (arrondi au dixième comme à l'affichage)
+const SPEED_TIERS = [
+  { pts: 4, test: d => d > 0,    label: 'Plus rapide dans la Zt' },
+  { pts: 3, test: d => d >= -8,  label: 'Vitesse proche (0 à −8 %)' },
+  { pts: 2, test: d => d >= -15, label: 'Vitesse correcte (−8,1 à −15 %)' },
+  { pts: 1, test: d => d >= -20, label: 'Vitesse faible (−15,1 à −20 %)' },
+  { pts: 0, test: () => true,    label: 'Vitesse inférieure (< −20 %)' }
+];
+function speedPoints(vZt, vR) {
+  const diff = Math.round((vZt - vR) / vR * 1000) / 10;
+  const t = SPEED_TIERS.find(x => x.test(diff));
+  return { pts: t.pts, key: 'p' + t.pts, label: t.label, diff };
 }
 
 /* ---------- barème autoréférencé : vitesse sur 80 m /10 ----------
    Meilleur temps de chaque élève (tous ses passages, D ou R).
    Meilleur temps de la classe = 10 ; moins bon temps = plancher ; linéaire entre les deux, arrondi au 0,5. */
-const floorNote = () => S.settings.floor ?? 0;
+const floorNote = () => S.settings.floor ?? 2;
 function bestTime(c, sid) {
   const t = passagesOf(c, sid).map(p => p.tEnd);
   return t.length ? Math.min(...t) : null;
@@ -76,7 +98,7 @@ function speedScale(c) {
   return { tMin: Math.min(...bests), tMax: Math.max(...bests), n: bests.length, floor: floorNote() };
 }
 function speedNote(sc, t) {
-  if (!sc || t == null) return 0;
+  if (!sc || t == null) return floorNote(); // non chronométré : note plancher
   if (sc.tMax === sc.tMin) return 10;
   const raw = sc.floor + (10 - sc.floor) * (sc.tMax - t) / (sc.tMax - sc.tMin);
   return Math.round(Math.min(10, Math.max(sc.floor, raw)) * 2) / 2;
@@ -180,6 +202,7 @@ function parseRows(rows) {
   return out.sort(byName);
 }
 const byName = (x, y) => (x.nom + ' ' + x.prenom).localeCompare(y.nom + ' ' + y.prenom, 'fr', { sensitivity: 'base' });
+const byFirst = (x, y) => ((x.prenom || x.nom) + ' ' + x.nom).localeCompare((y.prenom || y.nom) + ' ' + y.nom, 'fr', { sensitivity: 'base' });
 
 /* ---------------- classes ---------------- */
 function renderClasses() {
@@ -210,14 +233,14 @@ let sel = { d: null, r: null };
 function renderTiles() {
   const c = cls(); const el = $('#tiles');
   if (!c.students.length) { el.innerHTML = '<div class="empty">Aucun élève.</div>'; updateSelBar(); return; }
-  el.innerHTML = [...c.students].sort(byName).map(s => {
+  el.innerHTML = [...c.students].sort(byFirst).map(s => {
     const { n, note } = noteOf(c, s.id);
-    const dots = Array.from({ length: Math.max(NB_PASSAGES, n) }, (_, i) =>
-      `<span class="dot ${i < n ? (i < NB_PASSAGES ? 'on' : 'extra') : ''}"></span>`).join('');
+    const dots = Array.from({ length: Math.max(nbP(), n) }, (_, i) =>
+      `<span class="dot ${i < n ? (i < nbP() ? 'on' : 'extra') : ''}"></span>`).join('');
     const role = sel.d === s.id ? 'd' : sel.r === s.id ? 'r' : '';
-    return `<button class="tile ${n >= NB_PASSAGES ? 'done' : ''} ${role ? 'sel-' + role : ''}" data-id="${s.id}">
+    return `<button class="tile ${n >= nbP() ? 'done' : ''} ${role ? 'sel-' + role : ''}" data-id="${s.id}">
       ${role ? `<span class="role ${role} badge">${role.toUpperCase()}</span>` : ''}
-      <span class="nom">${esc(s.nom)}</span><span class="prenom">${esc(s.prenom)}</span>
+      <span class="nom">${esc(dn(c, s.id))}</span>
       <span class="foot"><span class="dots">${dots}</span><span class="avg">${n ? fnum(note, 1) : ''}</span></span>
     </button>`;
   }).join('');
@@ -232,8 +255,8 @@ function pick(id) {
   else sel.r = id;
   renderTiles();
   if (sel.d && sel.r) {
-    const full = [sel.d, sel.r].filter(x => noteOf(c, x).n >= NB_PASSAGES).map(x => fullName(stu(c, x)));
-    if (full.length && !confirm(`${full.join(' et ')} a/ont déjà ${NB_PASSAGES} passages.\nContinuer ? (les ${NB_PASSAGES} meilleurs seront retenus)`)) { sel.r = null; renderTiles(); return; }
+    const full = [sel.d, sel.r].filter(x => noteOf(c, x).n >= nbP()).map(x => dn(c, x));
+    if (full.length && !confirm(`${full.join(' et ')} a/ont déjà ${nbP()} passages.\nContinuer ? (les ${nbP()} meilleurs seront retenus)`)) { sel.r = null; renderTiles(); return; }
     setTimeout(startRun, 250);
   }
 }
@@ -242,7 +265,7 @@ function updateSelBar() {
   [['d', 'Touchez le démarreur'], ['r', 'puis le relayeur']].forEach(([k, ph]) => {
     const slot = $('#slot-' + k);
     slot.classList.toggle('filled', !!sel[k]);
-    slot.querySelector('.who').textContent = sel[k] ? fullName(stu(c, sel[k])) : ph;
+    slot.querySelector('.who').textContent = sel[k] ? dn(c, sel[k]) : ph;
   });
 }
 $('#sel-clear').onclick = () => { sel = { d: null, r: null }; renderTiles(); };
@@ -261,8 +284,8 @@ function startRun() {
 }
 function paintPair() {
   const c = cls();
-  $('#c-d').textContent = $('#e-d').textContent = fullName(stu(c, run.d));
-  $('#c-r').textContent = $('#e-r').textContent = fullName(stu(c, run.r));
+  $('#c-d').textContent = $('#e-d').textContent = dn(c, run.d);
+  $('#c-r').textContent = $('#e-r').textContent = dn(c, run.r);
 }
 $('#c-swap').onclick = () => { [run.d, run.r] = [run.r, run.d]; paintPair(); };
 
@@ -313,12 +336,12 @@ function releaseWake() { try { wake && wake.release(); } catch (e) {} wake = nul
 /* ---------------- évaluation ---------------- */
 let ev = null;
 function openEval() {
-  const { total, zt, tol } = S.settings;
+  const { total, zt } = S.settings;
   const [tIn, tOut, tEnd] = run.marks;
   const tZt = tOut - tIn, tRest = tEnd - tZt;
   if (tZt <= 0 || tRest <= 0) { toast('Temps incohérents, recommencez'); $('#c-reset').onclick(); return; }
   const vZt = zt / (tZt / 1000), vR = (total - zt) / (tRest / 1000);
-  const sp = speedPoints(vZt, vR, tol);
+  const sp = speedPoints(vZt, vR);
   ev = { main: null, noTurn: null, tZt, tRest, tEnd, tIn, vZt, vR, sp };
   stopClock();
 
@@ -327,14 +350,12 @@ function openEval() {
     <div><span>Entrée Zt</span><b>${fmt(tIn)} s</b></div>
     <div><span>Temps Zt (${zt} m)</span><b>${fmt(tZt)} s</b></div>
     <div><span>Hors Zt (${total - zt} m)</span><b>${fmt(tRest)} s</b></div>`;
-  const labels = { faster: 'Vitesse Zt supérieure', equal: 'Vitesse Zt égale', slower: 'Vitesse Zt inférieure' };
   $('#speed-box').innerHTML = `
     <div class="speed">
       <div><span>Vitesse dans la Zt</span><b>${fnum(vZt)} m/s</b><span>${fnum(vZt * 3.6, 1)} km/h</span></div>
       <div><span>Vitesse hors Zt</span><b>${fnum(vR)} m/s</b><span>${fnum(vR * 3.6, 1)} km/h</span></div>
     </div>
-    <div class="verdict p${sp.pts}">${labels[sp.key]} (${sp.diff >= 0 ? '+' : ''}${fnum(sp.diff, 1)} %) → ${sp.pts} pts</div>
-    <p class="hint">Tolérance « égale » : ±${String(tol).replace('.', ',')} %</p>`;
+    <div class="verdict p${sp.pts}">${sp.label} : ${sp.diff > 0 ? '+' : ''}${fnum(sp.diff, 1)} % → ${sp.pts} pt${sp.pts > 1 ? 's' : ''}</div>`;
 
   $$('#v-eval .yn .btn').forEach(b => b.classList.remove('chosen'));
   ['#q2', '#q3', '#e-total', '#e-save'].forEach(s => $(s).classList.add('hidden'));
@@ -372,9 +393,9 @@ $('#e-cancel').onclick = () => { if (confirm('Annuler ce passage sans l\'enregis
 /* ---------------- résultats ---------------- */
 function resultRows(c) {
   const sc = speedScale(c);
-  return [...c.students].sort(byName).map(s => {
+  return [...c.students].sort(byFirst).map(s => {
     const r = noteOf(c, s.id);
-    const cells = Array.from({ length: Math.max(NB_PASSAGES, r.n) }, (_, i) => r.scores[i] ?? null);
+    const cells = Array.from({ length: Math.max(nbP(), r.n) }, (_, i) => r.scores[i] ?? null);
     const best = bestTime(c, s.id);
     return { s, ...r, cells, best, vNote: speedNote(sc, best) };
   });
@@ -392,17 +413,21 @@ function renderScale(c) {
     <div class="scale-grid">${scaleRows(sc).map(([n, t]) => `<div><b>${n}</b><span>${fmt(t)} s</span></div>`).join('')}</div>`}
     <p class="hint">Linéaire entre le meilleur et le moins bon « meilleur temps » des élèves, arrondi au 0,5 point. Le barème évolue à chaque nouveau passage.</p>`;
 }
+function renderNbPass() {
+  $$('#nbpass button').forEach(b => b.classList.toggle('on', +b.dataset.n === nbP()));
+}
+$$('#nbpass button').forEach(b => b.onclick = () => { S.settings.nbPass = +b.dataset.n; save(); renderResults(); toast(`Note calculée sur ${b.dataset.n} passages`); });
 function renderResults() {
-  const c = cls(); $('#r-class').textContent = '· ' + c.name;
+  const c = cls(); $('#r-class').textContent = '· ' + c.name; renderNbPass();
   const rows = resultRows(c);
-  const maxP = Math.max(NB_PASSAGES, ...rows.map(r => r.n));
+  const maxP = Math.max(nbP(), ...rows.map(r => r.n));
   const passes = rows.map(r => passagesOf(c, r.s.id));
   $('#r-table').innerHTML = `
     <tr><th style="text-align:left">Élève</th>${Array.from({ length: maxP }, (_, i) => `<th>P${i + 1}</th>`).join('')}<th>Transmission<br>/10</th><th class="sep">Meilleur<br>temps 80 m</th><th>Vitesse<br>/10</th></tr>
     ${rows.map((r, ri) => `<tr>
-      <td class="name">${esc(r.s.nom)} ${esc(r.s.prenom)}</td>
+      <td class="name">${esc(dn(c, r.s.id))}</td>
       ${Array.from({ length: maxP }, (_, i) => r.cells[i] == null
-        ? `<td class="miss">${i < NB_PASSAGES ? '0' : ''}</td>`
+        ? `<td class="miss">${i < nbP() ? '0' : ''}</td>`
         : `<td class="pbtn" data-p="${passes[ri][i].id}">${r.cells[i]}</td>`).join('')}
       <td class="note">${fnum(r.note, 2)}</td>
       <td class="sep ${r.best == null ? 'miss' : ''}">${r.best == null ? '–' : fmt(r.best) + ' s'}</td>
@@ -413,7 +438,7 @@ function renderResults() {
   const h = [...c.passages].sort((a, b) => b.ts - a.ts);
   $('#r-hist').innerHTML = h.length ? h.map(p => `
     <div class="list-item">
-      <div class="grow"><b>${p.score}/10</b> · <span class="role d">D</span> ${esc(fullName(stu(c, p.d)))} → <span class="role r">R</span> ${esc(fullName(stu(c, p.r)))}
+      <div class="grow"><b>${p.score}/10</b> · <span class="role d">D</span> ${esc(dn(c, p.d))} → <span class="role r">R</span> ${esc(dn(c, p.r))}
         <div class="meta">${new Date(p.ts).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })} · total ${fmt(p.tEnd)} s · Zt ${fmt(p.tZt)} s ·
         main ${p.main ? '✓' : '✗'} · ne se retourne pas ${p.noTurn ? '✓' : '✗'} · vitesse ${p.ptsSpeed} pts</div></div>
       <button class="btn danger-ghost small" data-delp="${p.id}">Suppr.</button>
@@ -422,7 +447,7 @@ function renderResults() {
 }
 function passageDetail(pid) {
   const c = cls(), p = c.passages.find(x => x.id === pid);
-  const txt = `${fullName(stu(c, p.d))} (D) → ${fullName(stu(c, p.r))} (R)\n` +
+  const txt = `${dn(c, p.d)} (D) → ${dn(c, p.r)} (R)\n` +
     `Note : ${p.score}/10\nTemps total : ${fmt(p.tEnd)} s · Zt : ${fmt(p.tZt)} s\n` +
     `V Zt ${fnum(p.vZt)} m/s · V hors Zt ${fnum(p.vR)} m/s\n` +
     `Main : ${p.main ? 'valable' : 'non valable'} · Ne se retourne pas : ${p.noTurn ? 'oui' : 'non'}\n\nSupprimer ce passage (pour les 2 élèves) ?`;
@@ -436,10 +461,10 @@ function delPassage(pid, confirmed) {
 /* ---------------- export ---------------- */
 function exportData() {
   const c = cls(); const rows = resultRows(c);
-  const head = ['Nom', 'Prénom', ...Array.from({ length: NB_PASSAGES }, (_, i) => 'Passage ' + (i + 1)), 'Passages effectués',
+  const head = ['Nom', 'Prénom', ...Array.from({ length: nbP() }, (_, i) => 'Passage ' + (i + 1)), 'Passages effectués',
     'Transmission /10', 'Meilleur temps 80 m (s)', 'Vitesse /10'];
   const notes = rows.map(r => [r.s.nom, r.s.prenom,
-    ...Array.from({ length: NB_PASSAGES }, (_, i) => r.scores[i] ?? 0), r.n, +r.note.toFixed(2),
+    ...Array.from({ length: nbP() }, (_, i) => r.scores[i] ?? 0), r.n, +r.note.toFixed(2),
     r.best == null ? '' : +(r.best / 1000).toFixed(2), r.vNote]);
   const sc = speedScale(c);
   const scale = [['Note vitesse /10', 'Temps 80 m (s)']].concat(sc ? scaleRows(sc).map(([n, t]) => [n, +(t / 1000).toFixed(2)]) : []);
@@ -481,15 +506,15 @@ $('#exp-csv').onclick = () => {
 
 /* ---------------- réglages & sauvegarde ---------------- */
 function renderSettings() {
-  $('#set-total').value = S.settings.total; $('#set-zt').value = S.settings.zt; $('#set-tol').value = S.settings.tol;
+  $('#set-total').value = S.settings.total; $('#set-zt').value = S.settings.zt;
   $('#set-floor').value = floorNote();
 }
 $('#set-save').onclick = () => {
-  const total = parseFloat($('#set-total').value), zt = parseFloat($('#set-zt').value), tol = parseFloat($('#set-tol').value);
+  const total = parseFloat($('#set-total').value), zt = parseFloat($('#set-zt').value);
   const floor = parseFloat($('#set-floor').value);
-  if (!(total > 0 && zt > 0 && zt < total && tol >= 0)) { toast('Valeurs invalides (Zt < distance totale)'); return; }
+  if (!(total > 0 && zt > 0 && zt < total)) { toast('Valeurs invalides (Zt < distance totale)'); return; }
   if (!(floor >= 0 && floor < 10)) { toast('Plancher vitesse : entre 0 et 9,5'); return; }
-  S.settings = { total, zt, tol, floor }; save(); toast('Réglages enregistrés');
+  Object.assign(S.settings, { total, zt, floor }); save(); toast('Réglages enregistrés');
 };
 $('#bk-export').onclick = () => {
   const d = new Date().toISOString().slice(0, 10);
@@ -502,7 +527,7 @@ $('#bk-import').addEventListener('change', async e => {
     if (!d || !Array.isArray(d.classes)) throw 0;
     if (!confirm('Remplacer toutes les données actuelles par cette sauvegarde ?')) return;
     Object.keys(S).forEach(k => delete S[k]); Object.assign(S, d);
-    S.settings = S.settings || { total: 80, zt: 20, tol: 3, floor: 0 };
+    S.settings = S.settings || { total: 80, zt: 20, floor: 2, nbPass: 4, v: 2 };
     save(); toast('Sauvegarde restaurée'); show('classes');
   } catch (err) { toast('Fichier de sauvegarde invalide'); }
 });

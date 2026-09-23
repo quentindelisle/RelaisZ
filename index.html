@@ -136,7 +136,12 @@
         <button id="exp-csv" class="btn ghost small">CSV</button>
       </div>
     </div>
-    <p class="hint"><b>Transmission /10</b> = moyenne de 4 passages (passage manquant = 0 ; au-delà de 4, les 4 meilleurs). <b>Vitesse /10</b> = meilleur temps de l'élève sur 80 m, noté sur le barème autoréférencé de la classe (élève non chronométré = 0). Touchez un passage pour le détail / suppression.</p>
+    <div class="card row gap wrap">
+      <b>Nombre de passages retenus :</b>
+      <div class="seg" id="nbpass"><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button></div>
+      <span class="hint" style="margin:0">recalcul automatique</span>
+    </div>
+    <p class="hint"><b>Transmission /10</b> = moyenne sur le nombre de passages choisi (passage manquant = 0 ; s'il y en a plus, les meilleurs sont retenus). <b>Vitesse /10</b> = meilleur temps de l'élève sur 80 m, noté sur le barème autoréférencé de la classe (minimum 2/10, y compris pour un élève non chronométré). Touchez un passage pour le détail / suppression.</p>
     <div class="table-wrap"><table id="r-table"></table></div>
 
     <h2>Barème vitesse autoréférencé (80 m)</h2>
@@ -152,10 +157,9 @@
     <div class="card">
       <label class="field">Distance totale (m)<input id="set-total" type="number" inputmode="decimal" min="1" step="1"></label>
       <label class="field">Longueur zone de transmission (m)<input id="set-zt" type="number" inputmode="decimal" min="1" step="1"></label>
-      <label class="field">Tolérance « vitesse égale » (%)<input id="set-tol" type="number" inputmode="decimal" min="0" step="0.5"></label>
-      <p class="hint">Vitesse Zt = longueur Zt ÷ temps dans la Zt. Vitesse hors Zt = (distance totale − Zt) ÷ (temps total − temps Zt). Si l'écart est dans la tolérance, les vitesses sont considérées comme égales (3 pts). Un chronométrage manuel a une précision d'environ ±0,1 s, d'où une tolérance par défaut de 3 %.</p>
-      <label class="field">Note vitesse du moins bon temps de la classe (plancher /10)<input id="set-floor" type="number" inputmode="decimal" min="0" max="9.5" step="0.5"></label>
-      <p class="hint">Barème vitesse autoréférencé : meilleur temps de la classe = 10, moins bon temps = plancher (0 par défaut), linéaire entre les deux, arrondi au 0,5.</p>
+      <p class="hint">Vitesse Zt = longueur Zt ÷ temps dans la Zt. Vitesse hors Zt = (distance totale − Zt) ÷ (temps total − temps Zt). Écart = (V Zt − V hors Zt) ÷ V hors Zt.</p>
+      <label class="field">Note minimale en vitesse (moins bon temps de la classe, /10)<input id="set-floor" type="number" inputmode="decimal" min="0" max="9.5" step="0.5"></label>
+      <p class="hint">Barème vitesse autoréférencé : meilleur temps de la classe = 10, moins bon temps = note minimale (2 par défaut), linéaire entre les deux, arrondi au 0,5.</p>
       <button id="set-save" class="btn primary">Enregistrer</button>
     </div>
 
@@ -164,13 +168,20 @@
       <ul class="bareme">
         <li>Transmission valable (main) : <b>3 pts</b></li>
         <li>Ne se retourne pas : <b>3 pts</b></li>
-        <li>Vitesse Zt &gt; vitesse hors Zt : <b>4 pts</b> · égale : <b>3 pts</b> · inférieure : <b>0 pt</b></li>
+        <li>Écart de vitesse Zt / hors Zt :
+          <ul>
+            <li>plus rapide dans la Zt : <b>4 pts</b></li>
+            <li>vitesse proche (0 à −8 %) : <b>3 pts</b></li>
+            <li>vitesse correcte (−8,1 à −15 %) : <b>2 pts</b></li>
+            <li>vitesse faible (−15,1 à −20 %) : <b>1 pt</b></li>
+            <li>vitesse inférieure (au-delà de −20 %) : <b>0 pt</b></li>
+          </ul></li>
       </ul>
       <p class="hint">Le score du passage est attribué au démarreur et au relayeur.</p>
       <h3 style="margin-top:14px">Note vitesse (/10, séparée)</h3>
       <ul class="bareme">
         <li>On retient le <b>meilleur temps sur 80 m</b> de chaque élève (parmi tous ses passages).</li>
-        <li>Meilleur temps de la classe = <b>10</b> · moins bon = <b>plancher</b> · linéaire entre les deux.</li>
+        <li>Meilleur temps de la classe = <b>10</b> · moins bon = <b>2</b> (note minimale) · linéaire entre les deux.</li>
       </ul>
     </div>
 
@@ -180,7 +191,7 @@
       <label class="btn ghost file-btn">Restaurer une sauvegarde…<input id="bk-import" type="file" accept=".json,application/json" hidden></label>
     </div>
     <p class="hint">Les données restent sur l'iPad (stockage local). Pensez à exporter une sauvegarde régulièrement.</p>
-    <p class="credit">RelaisZ v1.1 · N'EPS · by Quentin Delisle</p>
+    <p class="credit">RelaisZ v1.2 · N'EPS · by Quentin Delisle</p>
   </section>
 
 </main>
