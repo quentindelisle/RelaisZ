@@ -136,8 +136,11 @@
         <button id="exp-csv" class="btn ghost small">CSV</button>
       </div>
     </div>
-    <p class="hint">Note /10 = moyenne de 4 passages (passage manquant = 0). Au-delà de 4 passages, les 4 meilleurs sont retenus. Touchez un passage pour le détail / suppression.</p>
+    <p class="hint"><b>Transmission /10</b> = moyenne de 4 passages (passage manquant = 0 ; au-delà de 4, les 4 meilleurs). <b>Vitesse /10</b> = meilleur temps de l'élève sur 80 m, noté sur le barème autoréférencé de la classe (élève non chronométré = 0). Touchez un passage pour le détail / suppression.</p>
     <div class="table-wrap"><table id="r-table"></table></div>
+
+    <h2>Barème vitesse autoréférencé (80 m)</h2>
+    <div class="card" id="r-scale"></div>
 
     <h2>Historique des passages</h2>
     <div id="r-hist" class="list"></div>
@@ -151,6 +154,8 @@
       <label class="field">Longueur zone de transmission (m)<input id="set-zt" type="number" inputmode="decimal" min="1" step="1"></label>
       <label class="field">Tolérance « vitesse égale » (%)<input id="set-tol" type="number" inputmode="decimal" min="0" step="0.5"></label>
       <p class="hint">Vitesse Zt = longueur Zt ÷ temps dans la Zt. Vitesse hors Zt = (distance totale − Zt) ÷ (temps total − temps Zt). Si l'écart est dans la tolérance, les vitesses sont considérées comme égales (3 pts). Un chronométrage manuel a une précision d'environ ±0,1 s, d'où une tolérance par défaut de 3 %.</p>
+      <label class="field">Note vitesse du moins bon temps de la classe (plancher /10)<input id="set-floor" type="number" inputmode="decimal" min="0" max="9.5" step="0.5"></label>
+      <p class="hint">Barème vitesse autoréférencé : meilleur temps de la classe = 10, moins bon temps = plancher (0 par défaut), linéaire entre les deux, arrondi au 0,5.</p>
       <button id="set-save" class="btn primary">Enregistrer</button>
     </div>
 
@@ -162,6 +167,11 @@
         <li>Vitesse Zt &gt; vitesse hors Zt : <b>4 pts</b> · égale : <b>3 pts</b> · inférieure : <b>0 pt</b></li>
       </ul>
       <p class="hint">Le score du passage est attribué au démarreur et au relayeur.</p>
+      <h3 style="margin-top:14px">Note vitesse (/10, séparée)</h3>
+      <ul class="bareme">
+        <li>On retient le <b>meilleur temps sur 80 m</b> de chaque élève (parmi tous ses passages).</li>
+        <li>Meilleur temps de la classe = <b>10</b> · moins bon = <b>plancher</b> · linéaire entre les deux.</li>
+      </ul>
     </div>
 
     <h2>Sauvegarde</h2>
@@ -170,7 +180,7 @@
       <label class="btn ghost file-btn">Restaurer une sauvegarde…<input id="bk-import" type="file" accept=".json,application/json" hidden></label>
     </div>
     <p class="hint">Les données restent sur l'iPad (stockage local). Pensez à exporter une sauvegarde régulièrement.</p>
-    <p class="credit">RelaisZ v1.0 · N'EPS · by Quentin Delisle</p>
+    <p class="credit">RelaisZ v1.1 · N'EPS · by Quentin Delisle</p>
   </section>
 
 </main>

@@ -9,7 +9,7 @@ const NB_PASSAGES = 4;
 const S = load();
 function load() {
   try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && d.classes) return d; } catch (e) {}
-  return { settings: { total: 80, zt: 20, tol: 3 }, classes: [], cur: null };
+  return { settings: { total: 80, zt: 20, tol: 3, floor: 0 }, classes: [], cur: null };
 }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
@@ -60,6 +60,36 @@ function speedPoints(vZt, vR, tol) {
   const diff = (vZt - vR) / vR * 100;
   if (Math.abs(diff) <= tol) return { pts: PTS.equal, key: 'equal', diff };
   return diff > 0 ? { pts: PTS.faster, key: 'faster', diff } : { pts: PTS.slower, key: 'slower', diff };
+}
+
+/* ---------- barème autoréférencé : vitesse sur 80 m /10 ----------
+   Meilleur temps de chaque élève (tous ses passages, D ou R).
+   Meilleur temps de la classe = 10 ; moins bon temps = plancher ; linéaire entre les deux, arrondi au 0,5. */
+const floorNote = () => S.settings.floor ?? 0;
+function bestTime(c, sid) {
+  const t = passagesOf(c, sid).map(p => p.tEnd);
+  return t.length ? Math.min(...t) : null;
+}
+function speedScale(c) {
+  const bests = c.students.map(s => bestTime(c, s.id)).filter(t => t != null);
+  if (!bests.length) return null;
+  return { tMin: Math.min(...bests), tMax: Math.max(...bests), n: bests.length, floor: floorNote() };
+}
+function speedNote(sc, t) {
+  if (!sc || t == null) return 0;
+  if (sc.tMax === sc.tMin) return 10;
+  const raw = sc.floor + (10 - sc.floor) * (sc.tMax - t) / (sc.tMax - sc.tMin);
+  return Math.round(Math.min(10, Math.max(sc.floor, raw)) * 2) / 2;
+}
+// temps (ms) correspondant à une note donnée
+function timeForNote(sc, note) {
+  if (sc.tMax === sc.tMin) return sc.tMin;
+  return sc.tMax - (note - sc.floor) / (10 - sc.floor) * (sc.tMax - sc.tMin);
+}
+function scaleRows(sc) {
+  const rows = [];
+  for (let n = 10; n >= Math.ceil(sc.floor); n--) rows.push([n, timeForNote(sc, n)]);
+  return rows;
 }
 
 /* ---------------- import ---------------- */
@@ -341,11 +371,26 @@ $('#e-cancel').onclick = () => { if (confirm('Annuler ce passage sans l\'enregis
 
 /* ---------------- résultats ---------------- */
 function resultRows(c) {
+  const sc = speedScale(c);
   return [...c.students].sort(byName).map(s => {
     const r = noteOf(c, s.id);
     const cells = Array.from({ length: Math.max(NB_PASSAGES, r.n) }, (_, i) => r.scores[i] ?? null);
-    return { s, ...r, cells };
+    const best = bestTime(c, s.id);
+    return { s, ...r, cells, best, vNote: speedNote(sc, best) };
   });
+}
+function renderScale(c) {
+  const sc = speedScale(c), el = $('#r-scale');
+  if (!sc) { el.innerHTML = '<div class="empty">Le barème se construit dès le premier passage chronométré.</div>'; return; }
+  el.innerHTML = `
+    <div class="scale-head">
+      <div><span>Meilleur temps classe</span><b>${fmt(sc.tMin)} s</b><small>= 10/10</small></div>
+      <div><span>Moins bon temps classe</span><b>${fmt(sc.tMax)} s</b><small>= ${fnum(sc.floor, 1)}/10</small></div>
+      <div><span>Élèves chronométrés</span><b>${sc.n}</b><small>/ ${c.students.length}</small></div>
+    </div>
+    ${sc.tMax === sc.tMin ? '<p class="hint">Un seul temps de référence pour l\'instant : tous les élèves chronométrés ont 10.</p>' : `
+    <div class="scale-grid">${scaleRows(sc).map(([n, t]) => `<div><b>${n}</b><span>${fmt(t)} s</span></div>`).join('')}</div>`}
+    <p class="hint">Linéaire entre le meilleur et le moins bon « meilleur temps » des élèves, arrondi au 0,5 point. Le barème évolue à chaque nouveau passage.</p>`;
 }
 function renderResults() {
   const c = cls(); $('#r-class').textContent = '· ' + c.name;
@@ -353,14 +398,17 @@ function renderResults() {
   const maxP = Math.max(NB_PASSAGES, ...rows.map(r => r.n));
   const passes = rows.map(r => passagesOf(c, r.s.id));
   $('#r-table').innerHTML = `
-    <tr><th style="text-align:left">Élève</th>${Array.from({ length: maxP }, (_, i) => `<th>P${i + 1}</th>`).join('')}<th>Note /10</th></tr>
+    <tr><th style="text-align:left">Élève</th>${Array.from({ length: maxP }, (_, i) => `<th>P${i + 1}</th>`).join('')}<th>Transmission<br>/10</th><th class="sep">Meilleur<br>temps 80 m</th><th>Vitesse<br>/10</th></tr>
     ${rows.map((r, ri) => `<tr>
       <td class="name">${esc(r.s.nom)} ${esc(r.s.prenom)}</td>
       ${Array.from({ length: maxP }, (_, i) => r.cells[i] == null
         ? `<td class="miss">${i < NB_PASSAGES ? '0' : ''}</td>`
         : `<td class="pbtn" data-p="${passes[ri][i].id}">${r.cells[i]}</td>`).join('')}
-      <td class="note">${fnum(r.note, 2)}</td></tr>`).join('')}`;
+      <td class="note">${fnum(r.note, 2)}</td>
+      <td class="sep ${r.best == null ? 'miss' : ''}">${r.best == null ? '–' : fmt(r.best) + ' s'}</td>
+      <td class="note v">${fnum(r.vNote, 1)}</td></tr>`).join('')}`;
   $('#r-table').querySelectorAll('[data-p]').forEach(td => td.onclick = () => passageDetail(td.dataset.p));
+  renderScale(c);
 
   const h = [...c.passages].sort((a, b) => b.ts - a.ts);
   $('#r-hist').innerHTML = h.length ? h.map(p => `
@@ -388,16 +436,20 @@ function delPassage(pid, confirmed) {
 /* ---------------- export ---------------- */
 function exportData() {
   const c = cls(); const rows = resultRows(c);
-  const head = ['Nom', 'Prénom', ...Array.from({ length: NB_PASSAGES }, (_, i) => 'Passage ' + (i + 1)), 'Passages effectués', 'Note /10'];
+  const head = ['Nom', 'Prénom', ...Array.from({ length: NB_PASSAGES }, (_, i) => 'Passage ' + (i + 1)), 'Passages effectués',
+    'Transmission /10', 'Meilleur temps 80 m (s)', 'Vitesse /10'];
   const notes = rows.map(r => [r.s.nom, r.s.prenom,
-    ...Array.from({ length: NB_PASSAGES }, (_, i) => r.scores[i] ?? 0), r.n, +r.note.toFixed(2)]);
+    ...Array.from({ length: NB_PASSAGES }, (_, i) => r.scores[i] ?? 0), r.n, +r.note.toFixed(2),
+    r.best == null ? '' : +(r.best / 1000).toFixed(2), r.vNote]);
+  const sc = speedScale(c);
+  const scale = [['Note vitesse /10', 'Temps 80 m (s)']].concat(sc ? scaleRows(sc).map(([n, t]) => [n, +(t / 1000).toFixed(2)]) : []);
   const det = [['Date', 'Démarreur', 'Relayeur', 'Temps total (s)', 'Entrée Zt (s)', 'Temps Zt (s)', 'V Zt (m/s)', 'V hors Zt (m/s)',
     'Main valable', 'Ne se retourne pas', 'Pts vitesse', 'Note /10']]
     .concat([...c.passages].sort((a, b) => a.ts - b.ts).map(p => [
       new Date(p.ts).toLocaleString('fr-FR'), fullName(stu(c, p.d)), fullName(stu(c, p.r)),
       +(p.tEnd / 1000).toFixed(2), +(p.tIn / 1000).toFixed(2), +(p.tZt / 1000).toFixed(2), p.vZt, p.vR,
       p.main ? 'Oui' : 'Non', p.noTurn ? 'Oui' : 'Non', p.ptsSpeed, p.score]));
-  return { head, notes, det, name: c.name };
+  return { head, notes, det, scale, name: c.name };
 }
 const safeName = s => s.replace(/[^\p{L}\d _-]+/gu, '').trim() || 'classe';
 async function deliver(blob, filename) {
@@ -412,7 +464,9 @@ $('#exp-xlsx').onclick = () => {
   const d = exportData(); const wb = XLSX.utils.book_new();
   const ws1 = XLSX.utils.aoa_to_sheet([d.head, ...d.notes]); ws1['!cols'] = [{ wch: 20 }, { wch: 16 }, ...d.head.slice(2).map(() => ({ wch: 11 }))];
   const ws2 = XLSX.utils.aoa_to_sheet(d.det); ws2['!cols'] = d.det[0].map((_, i) => ({ wch: i < 3 ? 22 : 13 }));
+  const ws3 = XLSX.utils.aoa_to_sheet(d.scale); ws3['!cols'] = [{ wch: 16 }, { wch: 16 }];
   XLSX.utils.book_append_sheet(wb, ws1, 'Notes'); XLSX.utils.book_append_sheet(wb, ws2, 'Passages');
+  XLSX.utils.book_append_sheet(wb, ws3, 'Barème vitesse');
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   deliver(new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Relais_${safeName(d.name)}.xlsx`);
 };
@@ -428,11 +482,14 @@ $('#exp-csv').onclick = () => {
 /* ---------------- réglages & sauvegarde ---------------- */
 function renderSettings() {
   $('#set-total').value = S.settings.total; $('#set-zt').value = S.settings.zt; $('#set-tol').value = S.settings.tol;
+  $('#set-floor').value = floorNote();
 }
 $('#set-save').onclick = () => {
   const total = parseFloat($('#set-total').value), zt = parseFloat($('#set-zt').value), tol = parseFloat($('#set-tol').value);
+  const floor = parseFloat($('#set-floor').value);
   if (!(total > 0 && zt > 0 && zt < total && tol >= 0)) { toast('Valeurs invalides (Zt < distance totale)'); return; }
-  S.settings = { total, zt, tol }; save(); toast('Réglages enregistrés');
+  if (!(floor >= 0 && floor < 10)) { toast('Plancher vitesse : entre 0 et 9,5'); return; }
+  S.settings = { total, zt, tol, floor }; save(); toast('Réglages enregistrés');
 };
 $('#bk-export').onclick = () => {
   const d = new Date().toISOString().slice(0, 10);
@@ -445,7 +502,7 @@ $('#bk-import').addEventListener('change', async e => {
     if (!d || !Array.isArray(d.classes)) throw 0;
     if (!confirm('Remplacer toutes les données actuelles par cette sauvegarde ?')) return;
     Object.keys(S).forEach(k => delete S[k]); Object.assign(S, d);
-    S.settings = S.settings || { total: 80, zt: 20, tol: 3 };
+    S.settings = S.settings || { total: 80, zt: 20, tol: 3, floor: 0 };
     save(); toast('Sauvegarde restaurée'); show('classes');
   } catch (err) { toast('Fichier de sauvegarde invalide'); }
 });
