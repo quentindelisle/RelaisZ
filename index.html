@@ -20,7 +20,7 @@
   <div class="brand">RelaisZ <small id="hdr-class"></small></div>
   <nav class="tabs">
     <button data-view="tiles" class="tab">Passage</button>
-    <button data-view="results" class="tab">Résultats</button>
+    <button data-view="bilan" class="tab">Bilan</button>
     <button data-view="classes" class="tab">Classes</button>
     <button data-view="settings" class="tab" aria-label="Réglages">⚙︎</button>
   </nav>
@@ -35,7 +35,8 @@
       <label class="field">Nom de la classe
         <input id="imp-name" type="text" placeholder="ex : 2nde 4" autocomplete="off">
       </label>
-      <p class="hint">Fichier <b>XLSX</b> ou <b>CSV</b> : « NOM Prénom » en colonne A, <i>ou</i> Nom en colonne A et Prénom en colonne B. Une ligne d'en-tête éventuelle est ignorée.</p>
+      <p class="hint">Fichier <b>XLSX</b> ou <b>CSV</b> : <b>Nom en colonne A</b>, <b>Prénom en colonne B</b>. Une ligne d'en-tête éventuelle est ignorée. Les élèves s'affichent « Prénom + initiale du nom ».</p>
+      <p class="hint">Importez le <b>même fichier sur chaque tablette</b> : les passages pourront ensuite être fusionnés pour le bilan de classe.</p>
       <label class="btn primary file-btn">Choisir le fichier…
         <input id="imp-file" type="file" accept=".xlsx,.xls,.csv,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
       </label>
@@ -46,8 +47,28 @@
     <div id="class-list" class="list"></div>
   </section>
 
+  <!-- ============ GROUPE DE LA TABLETTE ============ -->
+  <section id="v-group" class="view">
+    <div class="row between wrap">
+      <h2>Élèves qui passent sur cette tablette</h2>
+      <div class="row gap">
+        <button id="g-all" class="btn ghost small">Tout cocher</button>
+        <button id="g-none" class="btn ghost small">Tout décocher</button>
+      </div>
+    </div>
+    <p class="hint">Cochez les élèves de votre groupe : seules leurs tuiles s'afficheront sur cette tablette.</p>
+    <div id="g-list" class="tiles"></div>
+    <div class="row gap center">
+      <button id="g-ok" class="btn primary big">Valider le groupe</button>
+    </div>
+  </section>
+
   <!-- ============ TUILES ÉLÈVES ============ -->
   <section id="v-tiles" class="view">
+    <div class="group-bar">
+      <span id="group-info"></span>
+      <button id="group-edit" class="btn ghost small">Choisir les élèves de la tablette</button>
+    </div>
     <div class="sel-bar">
       <div class="sel-slot" id="slot-d"><span class="role d">D</span><span class="who">Touchez le démarreur</span></div>
       <div class="arrow">➜</div>
@@ -55,9 +76,6 @@
       <button id="sel-clear" class="btn ghost small">Effacer</button>
     </div>
     <div id="tiles" class="tiles"></div>
-    <div class="tiles-foot">
-      <button id="add-student" class="btn ghost small">+ Ajouter un élève</button>
-    </div>
   </section>
 
   <!-- ============ CHRONO ============ -->
@@ -84,114 +102,101 @@
     </div>
 
     <div class="row gap center">
+      <button id="c-fail" class="btn fail" disabled>✗ Passage raté</button>
       <button id="c-undo" class="btn ghost">↶ Annuler le dernier top</button>
       <button id="c-reset" class="btn ghost">Recommencer</button>
-      <button id="c-cancel" class="btn danger-ghost">Abandonner</button>
+      <button id="c-cancel" class="btn danger-ghost">Retour (pas de passage)</button>
     </div>
   </section>
 
-  <!-- ============ ÉVALUATION ============ -->
+  <!-- ============ CRITÈRES (bloquant) ============ -->
   <section id="v-eval" class="view">
     <div class="pair">
       <div><span class="role d">D</span> <b id="e-d"></b></div>
       <div><span class="role r">R</span> <b id="e-r"></b></div>
     </div>
     <div id="e-times" class="card times"></div>
+    <div id="e-gap" class="card"></div>
 
-    <div class="card crit" id="q1">
-      <h3>1. Transmission valable (main de transmission) ?</h3>
-      <div class="yn">
-        <button class="btn yes" data-q="main" data-v="1">Oui <small>+3</small></button>
-        <button class="btn no" data-q="main" data-v="0">Non <small>0</small></button>
-      </div>
+    <div class="card crit hidden" id="e-fail">
+      <h3>Passage raté : cause ?</h3>
+      <div class="yn" id="fail-btns"></div>
     </div>
 
-    <div class="card crit hidden" id="q2">
-      <h3>2. Le relayeur ne se retourne pas ?</h3>
-      <div class="yn">
-        <button class="btn yes" data-q="noTurn" data-v="1">Oui, ne se retourne pas <small>+3</small></button>
-        <button class="btn no" data-q="noTurn" data-v="0">Se retourne <small>0</small></button>
-      </div>
-    </div>
+    <div id="e-crits"></div>
 
-    <div class="card crit hidden" id="q3">
-      <h3>3. Vitesse dans la Zt vs reste du parcours</h3>
-      <div id="speed-box"></div>
-    </div>
-
-    <div class="card total hidden" id="e-total"></div>
-
+    <div class="card total" id="e-status"></div>
     <div class="row gap center">
-      <button id="e-save" class="btn primary big hidden">Valider le passage</button>
-      <button id="e-cancel" class="btn danger-ghost">Annuler ce passage</button>
+      <button id="e-save" class="btn primary big" disabled>Enregistrer le passage</button>
+      <button id="e-redo" class="btn ghost">↺ Erreur de chrono : refaire</button>
     </div>
   </section>
 
-  <!-- ============ RÉSULTATS ============ -->
-  <section id="v-results" class="view">
+  <!-- ============ BILAN ============ -->
+  <section id="v-bilan" class="view">
     <div class="row between wrap">
-      <h2>Résultats <small id="r-class"></small></h2>
-      <div class="row gap">
+      <h2>Bilan de classe <small id="b-class"></small></h2>
+      <div class="row gap wrap">
         <button id="exp-xlsx" class="btn primary small">Exporter XLSX</button>
-        <button id="exp-csv" class="btn ghost small">CSV</button>
       </div>
     </div>
     <div class="card row gap wrap">
-      <b>Nombre de passages retenus :</b>
-      <div class="seg" id="nbpass"><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button></div>
-      <span class="hint" style="margin:0">recalcul automatique</span>
+      <label class="inline">Séance
+        <select id="b-date"></select>
+      </label>
+      <label class="inline">Tablettes
+        <select id="b-tab"></select>
+      </label>
     </div>
-    <p class="hint"><b>Transmission /10</b> = moyenne sur le nombre de passages choisi (passage manquant = 0 ; s'il y en a plus, les meilleurs sont retenus). <b>Vitesse /10</b> = meilleur temps de l'élève sur 80 m, noté sur le barème autoréférencé de la classe (minimum 2/10, y compris pour un élève non chronométré). Touchez un passage pour le détail / suppression.</p>
-    <div class="table-wrap"><table id="r-table"></table></div>
 
-    <h2>Barème vitesse autoréférencé (80 m)</h2>
-    <div class="card" id="r-scale"></div>
+    <div id="b-kpi" class="kpis"></div>
 
-    <h2>Historique des passages</h2>
-    <div id="r-hist" class="list"></div>
+    <h2>Critères qualitatifs</h2>
+    <div id="b-crit" class="card"></div>
+
+    <h2>Écart de vitesse dans la Zt</h2>
+    <div id="b-gap" class="card"></div>
+
+    <h2>Par élève</h2>
+    <div class="table-wrap"><table id="b-table"></table></div>
+
+    <h2>Regrouper les tablettes</h2>
+    <div class="card">
+      <p class="hint" style="margin-top:0">Sur chaque tablette : <b>Envoyer mes passages</b> (AirDrop, mail…). Sur la tablette du professeur : <b>Fusionner des passages reçus</b>. Les doublons sont ignorés.</p>
+      <div class="row gap wrap">
+        <button id="m-export" class="btn ghost">Envoyer mes passages</button>
+        <label class="btn ghost file-btn">Fusionner des passages reçus…<input id="m-import" type="file" accept=".json,application/json" multiple hidden></label>
+      </div>
+    </div>
+
+    <h2>Tous les passages <small id="h-count"></small></h2>
+    <div id="b-hist" class="list"></div>
   </section>
 
   <!-- ============ RÉGLAGES ============ -->
   <section id="v-settings" class="view">
     <h2>Réglages</h2>
     <div class="card">
+      <label class="field">Nom de cette tablette<input id="set-tablet" type="text" placeholder="ex : Tablette 1" autocomplete="off"></label>
       <label class="field">Distance totale (m)<input id="set-total" type="number" inputmode="decimal" min="1" step="1"></label>
       <label class="field">Longueur zone de transmission (m)<input id="set-zt" type="number" inputmode="decimal" min="1" step="1"></label>
-      <p class="hint">Vitesse Zt = longueur Zt ÷ temps dans la Zt. Vitesse hors Zt = (distance totale − Zt) ÷ (temps total − temps Zt). Écart = (V Zt − V hors Zt) ÷ V hors Zt.</p>
-      <label class="field">Note minimale en vitesse (moins bon temps de la classe, /10)<input id="set-floor" type="number" inputmode="decimal" min="0" max="9.5" step="0.5"></label>
-      <p class="hint">Barème vitesse autoréférencé : meilleur temps de la classe = 10, moins bon temps = note minimale (2 par défaut), linéaire entre les deux, arrondi au 0,5.</p>
+      <p class="hint">Vitesse Zt = longueur Zt ÷ temps dans la Zt. Vitesse hors Zt = (distance totale − Zt) ÷ (temps total − temps Zt). Écart = (V Zt − V hors Zt) ÷ V hors Zt. Un écart positif signifie que le témoin va plus vite dans la zone que sur le reste de la course.</p>
       <button id="set-save" class="btn primary">Enregistrer</button>
     </div>
 
-    <h2>Barème (par passage, /10)</h2>
+    <h2>Critères observés à chaque passage</h2>
     <div class="card">
-      <ul class="bareme">
-        <li>Transmission valable (main) : <b>3 pts</b></li>
-        <li>Ne se retourne pas : <b>3 pts</b></li>
-        <li>Écart de vitesse Zt / hors Zt :
-          <ul>
-            <li>plus rapide dans la Zt : <b>4 pts</b></li>
-            <li>vitesse proche (0 à −8 %) : <b>3 pts</b></li>
-            <li>vitesse correcte (−8,1 à −15 %) : <b>2 pts</b></li>
-            <li>vitesse faible (−15,1 à −20 %) : <b>1 pt</b></li>
-            <li>vitesse inférieure (au-delà de −20 %) : <b>0 pt</b></li>
-          </ul></li>
-      </ul>
-      <p class="hint">Le score du passage est attribué au démarreur et au relayeur.</p>
-      <h3 style="margin-top:14px">Note vitesse (/10, séparée)</h3>
-      <ul class="bareme">
-        <li>On retient le <b>meilleur temps sur 80 m</b> de chaque élève (parmi tous ses passages).</li>
-        <li>Meilleur temps de la classe = <b>10</b> · moins bon = <b>2</b> (note minimale) · linéaire entre les deux.</li>
-      </ul>
+      <ul class="bareme" id="crit-list"></ul>
+      <p class="hint">Aucune note n'est calculée. Chaque passage, réussi ou raté, est conservé. Les 4 critères doivent être renseignés pour enregistrer le passage et passer au binôme suivant.</p>
     </div>
 
     <h2>Sauvegarde</h2>
     <div class="card row gap wrap">
-      <button id="bk-export" class="btn ghost">Exporter une sauvegarde (.json)</button>
+      <button id="bk-export" class="btn ghost">Exporter une sauvegarde complète (.json)</button>
       <label class="btn ghost file-btn">Restaurer une sauvegarde…<input id="bk-import" type="file" accept=".json,application/json" hidden></label>
     </div>
     <p class="hint">Les données restent sur l'iPad (stockage local). Pensez à exporter une sauvegarde régulièrement.</p>
-    <p class="credit">RelaisZ v1.2 · N'EPS · by Quentin Delisle</p>
+    <p class="credit">RelaisZ v2.0 · N'EPS · by Quentin Delisle</p>
   </section>
 
 </main>

@@ -1,25 +1,30 @@
-# RelaisZ – Évaluation du relais (EPS)
+# RelaisZ – Observation du relais (EPS)
 
-PWA hors-ligne pour iPad : chronométrage et notation du relais (80 m, zone de transmission 20 m).
+PWA hors-ligne pour iPad : chronométrage du relais (80 m, zone de transmission 20 m), calcul de l'écart de vitesse dans la Zt et observation de critères qualitatifs. **Aucune note n'est calculée** : l'appli sert au bilan de classe.
 N'EPS · by Quentin Delisle
 
 ## Déploiement (GitHub Pages)
 1. Pousser le dossier à la racine du dépôt `RelaisZ`.
 2. Settings → Pages → Branch `main` / `root`.
-3. Sur l'iPad : ouvrir l'URL dans Safari → Partager → **Sur l'écran d'accueil**.
-   Après la première ouverture, l'appli fonctionne sans réseau.
+3. Sur chaque iPad : ouvrir l'URL dans Safari → Partager → **Sur l'écran d'accueil**.
 
 ## Utilisation
-1. **Classes** : importer un XLSX/CSV (« NOM Prénom » en A, ou Nom en A + Prénom en B).
-2. **Passage** : toucher le démarreur puis le relayeur → écran chrono.
-3. Chrono : Début → Entrée Zt → Fin Zt → Fin de course (top au toucher).
-4. Évaluation : main de transmission (3 pts) → ne se retourne pas (3 pts) → vitesse Zt vs hors Zt calculée (4 / 3 / 0 pts).
-5. **Résultats** : note /10 = somme des 4 passages ÷ 4 (passage manquant = 0 ; au-delà de 4, les 4 meilleurs). Export XLSX/CSV.
+1. **Réglages** : donner un nom à la tablette (Tablette 1, 2…).
+2. **Classes** : importer le fichier XLSX/CSV (Nom en A, Prénom en B) – le même sur chaque tablette.
+3. **Groupe** : cocher les élèves qui passent sur cette tablette ; seules leurs tuiles s'affichent.
+4. **Passage** : démarreur puis relayeur → chrono (Début, Entrée Zt, Fin Zt, Fin de course) ou **Passage raté**.
+5. **Critères** (obligatoires, l'appli bloque tant qu'ils ne sont pas tous renseignés) :
+   - Départ à un repère visuel
+   - Signal sonore déclenche la transmission
+   - Relayeur ne réaccélère pas après la transmission
+   - Passage de main optimal
+6. **Bilan** : % de Oui par critère, répartition des écarts de vitesse, tableau par élève, historique complet (passages ratés compris), export XLSX.
 
-## Règles de calcul
-- V Zt = Zt ÷ temps(Fin Zt − Entrée Zt)
-- V hors Zt = (distance − Zt) ÷ (temps total − temps Zt)
-- « Égale » si l'écart est dans la tolérance (3 % par défaut, réglable).
-- Le score d'un passage est attribué au démarreur et au relayeur.
+## Regrouper les tablettes
+Chaque tablette : Bilan → *Envoyer mes passages* (AirDrop). Tablette du professeur : *Fusionner des passages reçus*. Les élèves sont reconnus par Nom + Prénom, les doublons sont ignorés.
 
-Mise à jour : incrémenter `CACHE` dans `sw.js` pour forcer le rafraîchissement sur l'iPad.
+## Calcul
+- V Zt = Zt ÷ temps dans la Zt ; V hors Zt = (distance − Zt) ÷ (temps total − temps Zt)
+- Écart = (V Zt − V hors Zt) ÷ V hors Zt
+
+Mise à jour : incrémenter `CACHE` dans `sw.js`.
