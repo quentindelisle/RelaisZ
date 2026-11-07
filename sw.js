@@ -1,5 +1,5 @@
 // RelaisZ – service worker (cache hors-ligne)
-const CACHE = 'relaisz-v2.0.0';
+const CACHE = 'relaisz-v4.0.0';
 const ASSETS = [
   './',
   './index.html',
@@ -9,7 +9,13 @@ const ASSETS = [
   './vendor/xlsx.mini.min.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './icons/apple-touch-icon.png'
+  './icons/apple-touch-icon.png',
+  './icons/logo.png',
+  './qr.js',
+  './lib/qrcode.js',
+  './lib/jsQR.js',
+  './lib/zxing-reader.js',
+  './lib/zxing_reader.wasm'
 ];
 
 self.addEventListener('install', e => {

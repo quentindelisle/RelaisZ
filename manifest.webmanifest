@@ -1,13 +1,13 @@
 {
-  "name": "RelaisZ – Évaluation relais EPS",
-  "short_name": "RelaisZ",
-  "description": "Chronométrage et notation du relais (zone de transmission) – N'EPS by Quentin Delisle",
+  "name": "Zones Relais – N'EPS",
+  "short_name": "Zones Relais",
+  "description": "50 m départ arrêté, relais avec cible et indice technique, zone de transmission chronométrée, bilan chiffré – N'EPS by Quentin Delisle",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f4f6f9",
-  "theme_color": "#0f4c81",
+  "background_color": "#eef4fc",
+  "theme_color": "#022462",
   "lang": "fr",
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
