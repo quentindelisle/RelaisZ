@@ -7,7 +7,7 @@ PWA hors-ligne pour iPad – Académie de Nantes · N'EPS by Quentin Delisle
 Premier lancement : *Tablette enseignant* ou *Tablette élève*. Bascule 🧒 Élève / 🧑‍🏫 Prof en haut à droite (code enseignant 0000 par défaut, modifiable, transmis aux tablettes).
 
 ## Déroulé
-0. **Prof – Préparer** : importer la classe (Nom A, Prénom B, Sexe C), régler distance (100 m ; 80 m = extrapolé), Zt 20 m, récupération, **critères observables** (ajouter, renommer, supprimer, ordonner), code enseignant.
+0. **Prof – Préparer** : importer la classe (Nom A, Prénom B, Sexe D), régler distance (100 m ; 80 m = extrapolé), Zt 20 m, récupération, **critères observables** (ajouter, renommer, supprimer, ordonner), code enseignant.
 1. **Prof → élèves : 📤 Envoyer la séance** (QR). Chaque tablette élève : 📷 Recevoir la séance, choisit ses élèves, chronomètre les 50 m (2 couloirs, 1 départ, 2 arrivées), puis 📤 Envoyer mes résultats.
    **Prof : 📥 Récupérer les 50 m** (caméra allumée, on enchaîne les tablettes ; doublons ignorés).
 2. **Prof : 👥 Faire les groupes** (homogènes selon les points de vitesse, hétérogènes, aléatoires, mixité F/G, déplacement manuel) puis 📤 Envoyer les groupes. Chaque tablette élève rescanne et choisit son groupe ; les meilleurs 50 m de toute la classe arrivent avec (cible).

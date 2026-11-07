@@ -105,7 +105,7 @@ function migrate(d) {
   d.classes.forEach(c => {
     c.sprints = c.sprints || []; c.passages = c.passages || []; c.group = c.group || []; c.overrides = c.overrides || {};
     c.crit = c.crit || DEFAULT_CRIT.map(x => ({ ...x }));
-    c.grp = c.grp || {}; c.ng = c.ng || 0; c.b50ext = c.b50ext || {};
+    c.grp = c.grp || {}; c.ng = c.ng || 0; c.b50ext = c.b50ext || {}; c.deleted = c.deleted || [];
     if (c.myGroup === undefined) c.myGroup = null;
     c.students.forEach(s => { if (s.sexe === undefined) s.sexe = ''; });
   });
@@ -120,6 +120,32 @@ const stu = (c, id) => c.students.find(s => s.id === id);
 const isProf = () => S.mode === 'prof';
 const tabletName = () => S.settings.tablet || (isProf() ? 'Tablette prof' : 'Tablette élève');
 const crits = c => (c && c.crit && c.crit.length ? c.crit : DEFAULT_CRIT);
+/* Types de critères : Oui / Non · échelle de 1 (moins bien) à 10 (parfait) · libre (cases définies par l'enseignant) */
+const CTYPES = { yn: 'Oui / Non', scale: 'Échelle 1 à 10', free: 'Libre' };
+const ctype = cr => cr.t || 'yn';
+function critScore(cr, v) { // réussite ramenée entre 0 et 1 (null = ne compte pas)
+  if (v === undefined || v === null) return null;
+  const t = ctype(cr);
+  if (t === 'yn') return v === true ? 1 : v === false ? 0 : null;
+  if (t === 'scale') return (v - 1) / 9;
+  if (t === 'free') return cr.ord && (cr.o || []).length > 1 ? v / (cr.o.length - 1) : null;
+  return null;
+}
+function critText(cr, v) {
+  if (v === undefined || v === null) return '';
+  const t = ctype(cr);
+  if (t === 'yn') return v ? 'Oui' : 'Non';
+  if (t === 'scale') return v + '/10';
+  return (cr.o || [])[v] ?? '?';
+}
+const scoreCls = x => x == null ? 'neutral' : x >= 0.7 ? 'hi' : x >= 0.4 ? 'mid' : 'lo';
+function critSummary(cs) { // résumé d'un critère sur une liste de passages
+  if (!cs.n) return { main: '–', sub: '' };
+  if (cs.t === 'yn') return { main: pct(cs.yes, cs.n) + ' %', sub: `${cs.yes}/${cs.n} Oui` };
+  if (cs.t === 'scale') return { main: fnum(cs.mean) + '/10', sub: `${cs.n} obs.` };
+  const top = cs.dist.indexOf(Math.max(...cs.dist));
+  return { main: (cs.o || [])[top] || '?', sub: `${cs.dist[top]}/${cs.n}` };
+}
 
 function dnStudent(c, s) {
   if (!s.prenom) return s.nom;
@@ -235,6 +261,7 @@ function show(v) {
   else if (!isProf() && PROF_ONLY.includes(v)) v = 'eleve';
   if (['tiles', 'bilan', 'group', 'sprint', 'groupes', 'params'].includes(v) && !cls()) { toast(isProf() ? 'Importez ou choisissez une classe' : 'Recevez d\'abord la séance (QR du prof)'); v = isProf() ? 'classes' : 'eleve'; }
   if (view === 'recv' && v !== 'recv') stopScan();
+  if (!['tiles', 'chrono', 'eval'].includes(v)) vidOff();
   if (view === 'send' && v !== 'send') { clearInterval(qrTimer); $('#send-qr').innerHTML = ''; }
   view = v;
   $$('.view').forEach(e => e.classList.toggle('active', e.id === 'v-' + v));
@@ -378,7 +405,7 @@ function renderEleve() {
 function buildS(c) {
   return { a: APP, t: 'S', v: 4, ts: Date.now(), cid: c.id, cn: c.name, pin: S.pin,
     set: { total: S.settings.total, zt: S.settings.zt, rec: S.settings.rec },
-    crit: crits(c).map(x => [x.k, x.l]), ng: c.ng || 0,
+    crit: crits(c).map(x => [x.k, x.l, ctype(x), x.o || [], x.ord ? 1 : 0]), ng: c.ng || 0,
     st: c.students.map(s => [s.nom, s.prenom, s.sexe || '', best50(c, s.id), c.ng ? (c.grp[s.id] || 0) : 0]) };
 }
 function applyS(p) {
@@ -395,7 +422,7 @@ function applyS(p) {
   const changed = c.ng !== p.ng;
   c.ng = p.ng || 0;
   if (changed || (c.myGroup != null && c.myGroup > c.ng)) c.myGroup = null;
-  c.crit = p.crit.map(([k, l]) => ({ k, l }));
+  c.crit = p.crit.map(([k, l, t, o, ord]) => ({ k, l, t: t || 'yn', o: o || [], ord: !!ord }));
   c.recvAt = Date.now();
   Object.assign(S.settings, p.set); S.pin = p.pin || S.pin;
   S.cur = c.id; save();
@@ -405,10 +432,10 @@ function buildR(c) {
   const mineS = c.sprints.filter(s => s.local), mineP = c.passages.filter(p => p.local);
   const u = [...new Set([...mineS.map(s => s.sid), ...mineP.flatMap(p => [p.d, p.r])])];
   const ix = id => u.indexOf(id), ck = crits(c).map(x => x.k);
-  return { a: APP, t: 'R', v: 4, ts: Date.now(), cid: c.id, cn: c.name, tab: tabletName(), u, ck,
+  return { a: APP, t: 'R', v: 4, ts: Date.now(), cid: c.id, cn: c.name, tab: tabletName(), u, ck, del: c.deleted || [],
     s: mineS.map(s => [s.id, ix(s.sid), s.t, s.ts, s.endAt || null]),
     p: mineP.map(p => [p.id, p.ts, p.endAt || null, ix(p.d), ix(p.r), p.tIn, p.tZt, p.tEnd, p.cible ?? null,
-      p.fail ? FAILS.findIndex(f => f.k === p.fail) + 1 : 0, ck.map(k => p.c[k] === true ? '1' : p.c[k] === false ? '0' : '-').join(''),
+      p.fail ? FAILS.findIndex(f => f.k === p.fail) + 1 : 0, ck.map(k => { const v = p.c[k]; return v === true ? 1 : v === false ? 0 : v ?? null; }),
       p.cfg.total, p.cfg.zt]) };
 }
 function mergeR(R) {
@@ -419,7 +446,11 @@ function mergeR(R) {
     const id = R.u[i]; if (id && !stu(c, id)) { const [n, p] = id.split('|'); c.students.push({ id, nom: (n || '').toUpperCase(), prenom: cap(p || ''), sexe: '' }); }
     return id;
   };
-  const ks = new Set(c.sprints.map(s => s.id)), kp = new Set(c.passages.map(p => p.id));
+  // temps effacés sur la tablette élève : effacés aussi ici, et jamais réajoutés
+  let nd = 0;
+  (R.del || []).forEach(id => { nd += delRun(c, id, true); });
+  const gone = new Set(c.deleted || []);
+  const ks = new Set([...c.sprints.map(s => s.id), ...gone]), kp = new Set([...c.passages.map(p => p.id), ...gone]);
   let ns = 0, np = 0, dup = 0;
   R.s.forEach(([id, i, t, ts, endAt]) => {
     if (ks.has(id)) { dup++; return; }
@@ -428,13 +459,18 @@ function mergeR(R) {
   R.p.forEach(([id, ts, endAt, di, ri, tIn, tZt, tEnd, cible, fc, cs, total, zt]) => {
     if (kp.has(id)) { dup++; return; }
     const d = sid(di), r = sid(ri), cm = {};
-    (R.ck || []).forEach((k, j) => { if (cs[j] === '1') cm[k] = true; else if (cs[j] === '0') cm[k] = false; });
+    const crK = Object.fromEntries(crits(c).map(x => [x.k, x]));
+    (R.ck || []).forEach((k, j) => {
+      const v = typeof cs === 'string' ? (cs[j] === '1' ? 1 : cs[j] === '0' ? 0 : null) : cs[j];
+      if (v == null) return;
+      cm[k] = !crK[k] || ctype(crK[k]) === 'yn' ? v === 1 : v;
+    });
     c.passages.push(finalize({ id, ts, endAt, tablet: R.tab, local: false, d, r, dSnap: snap(c, d), rSnap: snap(c, r),
       tIn, tZt, tEnd, cible, fail: fc ? FAILS[fc - 1].k : null, c: cm, cfg: { total, zt } }));
     np++;
   });
   save();
-  return { c, ns, np, dup };
+  return { c, ns, np, dup, nd };
 }
 /* ancien format fichier (v3) */
 function mergeLegacy(d) {
@@ -493,7 +529,7 @@ function handlePacket(p) {
     return 'stop';
   }
   const r = mergeR(p);
-  recvLog.unshift(`✓ ${esc(p.tab)} : ${r.ns} chrono(s) 50 m, ${r.np} relais ajoutés${r.dup ? ` · ${r.dup} déjà reçus` : ''}`);
+  recvLog.unshift(`✓ ${esc(p.tab)} : ${r.ns} chrono(s) 50 m, ${r.np} relais ajoutés${r.dup ? ` · ${r.dup} déjà reçus` : ''}${r.nd ? ` · ${r.nd} effacé(s)` : ''}`);
   $('#recv-log').innerHTML = `<div class="card log">${recvLog.map(l => `<div>${l}</div>`).join('')}</div>`;
   toast(`${p.tab} : ${r.ns + r.np} résultat(s) ajouté(s)`);
   return 'continue';
@@ -581,7 +617,7 @@ function parseRows(rows) {
     const prenom = String(r[1] ?? '').trim().replace(/\s+/g, ' ');
     if (!nom) return;
     if (idx === 0 && /^(nom|noms|élève|eleve|élèves|eleves|name|identit)/i.test(nom)) return;
-    out.push({ id: keyOf(nom, prenom), nom, prenom, sexe: parseSex(r[2]) });
+    out.push({ id: keyOf(nom, prenom), nom, prenom, sexe: parseSex(r[3]) || parseSex(r[2]) });
   });
   return dedupe(out).sort(byFirst);
 }
@@ -624,18 +660,47 @@ function renderParams() {
   renderBareme();
 }
 function paintCrit() {
-  $('#crit-edit').innerHTML = critDraft.map((cr, i) => `<div class="crit-ed">
-    <span class="ph">${i + 1}</span><input type="text" value="${esc(cr.l)}" data-ci="${i}" maxlength="90" placeholder="Nouveau critère observable">
-    <button class="btn ghost small" data-cup="${i}" ${i ? '' : 'disabled'}>↑</button>
-    <button class="btn danger-ghost small" data-cdel="${i}">✕</button></div>`).join('') || '<div class="empty">Aucun critère.</div>';
+  $('#crit-edit').innerHTML = critDraft.map((cr, i) => {
+    const t = ctype(cr);
+    return `<div class="crit-box">
+      <div class="crit-ed"><span class="ph">${i + 1}</span><input type="text" value="${esc(cr.l)}" data-ci="${i}" maxlength="90" placeholder="Nouveau critère observable">
+        <button class="btn ghost small" data-cup="${i}" ${i ? '' : 'disabled'}>↑</button>
+        <button class="btn danger-ghost small" data-cdel="${i}">✕</button></div>
+      <div class="crit-opts">
+        <div class="seg small">${Object.entries(CTYPES).map(([k, l]) => `<button data-ct="${i}" data-t="${k}" class="${t === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+        ${t === 'scale' ? '<span class="hint">1 = moins bien … 10 = parfait</span>' : ''}
+        ${t === 'free' ? `<label class="inline">Nombre de cases <select data-cn="${i}">${[2, 3, 4, 5, 6, 7, 8].map(n => `<option value="${n}" ${n === cr.o.length ? 'selected' : ''}>${n}</option>`).join('')}</select></label>` : ''}
+      </div>
+      ${t === 'free' ? `<div class="free-opts">${cr.o.map((o, j) => `<input type="text" data-co="${i}" data-j="${j}" value="${esc(o)}" maxlength="40" placeholder="Case ${j + 1}">`).join('')}</div>
+        <label class="check"><input type="checkbox" data-cord="${i}" ${cr.ord ? 'checked' : ''}> Cases rangées de la moins bonne à la meilleure : elles comptent dans le niveau d'efficacité technique</label>` : ''}
+    </div>`;
+  }).join('') || '<div class="empty">Aucun critère.</div>';
   $$('#crit-edit [data-ci]').forEach(inp => inp.oninput = () => { critDraft[+inp.dataset.ci].l = inp.value; });
   $$('#crit-edit [data-cdel]').forEach(b => b.onclick = () => { critDraft.splice(+b.dataset.cdel, 1); paintCrit(); });
   $$('#crit-edit [data-cup]').forEach(b => b.onclick = () => { const i = +b.dataset.cup; [critDraft[i - 1], critDraft[i]] = [critDraft[i], critDraft[i - 1]]; paintCrit(); });
+  $$('#crit-edit [data-ct]').forEach(b => b.onclick = () => {
+    const cr = critDraft[+b.dataset.ct]; cr.t = b.dataset.t;
+    if (cr.t === 'free' && !(cr.o && cr.o.length >= 2)) { cr.o = ['', '', '']; cr.ord = true; }
+    paintCrit();
+  });
+  $$('#crit-edit [data-cn]').forEach(sl => sl.onchange = () => {
+    const cr = critDraft[+sl.dataset.cn], n = +sl.value;
+    cr.o = Array.from({ length: n }, (_, j) => cr.o[j] || ''); paintCrit();
+  });
+  $$('#crit-edit [data-co]').forEach(inp => inp.oninput = () => { critDraft[+inp.dataset.co].o[+inp.dataset.j] = inp.value; });
+  $$('#crit-edit [data-cord]').forEach(cb => cb.onchange = () => { critDraft[+cb.dataset.cord].ord = cb.checked; });
 }
-$('#crit-add').onclick = () => { critDraft.push({ k: 'c' + uid().slice(-6), l: '' }); paintCrit(); const ins = $$('#crit-edit input'); ins[ins.length - 1].focus(); };
+$('#crit-add').onclick = () => { critDraft.push({ k: 'c' + uid().slice(-6), l: '', t: 'yn', o: [], ord: false }); paintCrit(); const ins = $$('#crit-edit [data-ci]'); ins[ins.length - 1].focus(); };
 $('#crit-reset').onclick = () => { critDraft = DEFAULT_CRIT.map(x => ({ ...x })); paintCrit(); };
 $('#crit-save').onclick = () => {
-  const list = critDraft.map(x => ({ k: x.k, l: x.l.trim() })).filter(x => x.l);
+  const orig = Object.fromEntries(crits(cls()).map(x => [x.k, x]));
+  const list = critDraft.map(x => {
+    const t = ctype(x), o = t === 'free' ? x.o.map((v, j) => v.trim() || 'Case ' + (j + 1)) : [];
+    let k = x.k; const old = orig[k];
+    // type ou nombre de cases changé : nouveau critère (les anciennes réponses ne sont pas mélangées)
+    if (old && (ctype(old) !== t || (t === 'free' && (old.o || []).length !== o.length))) k = 'c' + uid().slice(-6);
+    return { k, l: x.l.trim(), t, o, ord: t === 'free' ? !!x.ord : false };
+  }).filter(x => x.l);
   if (!list.length) { toast('Gardez au moins un critère'); return; }
   cls().crit = list; save(); toast('Critères enregistrés · renvoyez la séance aux tablettes'); renderParams();
 };
@@ -799,6 +864,45 @@ function relayStudents(c) {
 }
 
 /* =====================================================================
+   EFFACER UN TEMPS (50 m ou relais) – depuis la tuile de l'élève ou le bilan
+   ===================================================================== */
+function delRun(c, id, silent) {
+  const n0 = c.sprints.length + c.passages.length;
+  c.sprints = c.sprints.filter(x => x.id !== id); c.passages = c.passages.filter(x => x.id !== id);
+  c.deleted = c.deleted || []; if (!c.deleted.includes(id)) c.deleted.push(id);   // transmis au prof avec « Envoyer mes résultats »
+  if (!silent) save();
+  return n0 - (c.sprints.length + c.passages.length);
+}
+function runsModal(sid, after) {
+  const c = cls();
+  const paint = () => {
+    const spr = c.sprints.filter(x => x.sid === sid).sort((a, b) => b.ts - a.ts);
+    const rel = c.passages.filter(p => p.d === sid || p.r === sid).sort((a, b) => b.ts - a.ts);
+    const best = best50(c, sid, c.sprints);
+    const when = ts => new Date(ts).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const m = modal(`<h2 style="margin-top:0">${esc(dn(c, sid))}</h2>
+      <h3>① 50 m <small class="meta">${spr.length} essai(s)</small></h3>
+      <div class="list">${spr.map(x => `<div class="list-item"><div class="grow"><b>${fmt(x.t)} s</b>${x.t === best ? ' <span class="tag st">meilleur</span>' : ''}
+        <div class="meta">${when(x.ts)} · ${esc(x.tablet || 'tablette')}</div></div><button class="btn danger-ghost small" data-del="${x.id}">Effacer</button></div>`).join('') || '<span class="meta">Aucun temps.</span>'}</div>
+      <h3 style="margin-top:14px">② Relais <small class="meta">${rel.length} course(s)</small></h3>
+      <div class="list">${rel.map(p => { const st = passStars(c, p); return `<div class="list-item ${p.fail ? 'failed' : ''}"><div class="grow">
+        <b>${p.fail ? 'Raté' : fmt(p.tEnd) + ' s'}</b> ${st != null ? `<span class="tag st">${'★'.repeat(st)}</span>` : ''}
+        <div class="meta">${p.d === sid ? 'Démarreur' : 'Relayeur'} avec ${esc(dn(c, p.d === sid ? p.r : p.d, p.d === sid ? p.rSnap : p.dSnap))} · ${when(p.ts)} · ${esc(p.tablet || 'tablette')}</div></div>
+        <button class="btn danger-ghost small" data-del="${p.id}">Effacer</button></div>`; }).join('') || '<span class="meta">Aucun relais.</span>'}</div>
+      <p class="hint">Effacer un relais l'efface aussi pour le partenaire. ${isProf() ? '' : 'L\'effacement est transmis au prof au prochain « Envoyer mes résultats ».'}</p>
+      <div class="row center"><button class="btn primary" data-close>Fermer</button></div>`);
+    m.classList.add('wide');
+    m.querySelector('[data-close]').onclick = () => { closeModal(); after && after(); };
+    m.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+      const isRel = c.passages.some(p => p.id === b.dataset.del);
+      if (!confirm(isRel ? 'Effacer ce relais (pour les deux élèves) ?' : 'Effacer ce temps sur 50 m ?')) return;
+      delRun(c, b.dataset.del); toast('Temps effacé'); paint();
+    });
+  };
+  paint();
+}
+
+/* =====================================================================
    ÉTAPE 1 : 50 m départ arrêté
    ===================================================================== */
 let spSel = [], sp = null;
@@ -815,9 +919,10 @@ function renderSprintTiles() {
       <span class="top"><span class="nom">${esc(dnStudent(c, s))}</span>${sexBadge(s.sexe)}</span>
       <span class="perf">${b != null ? `50 m : <b>${fmt(b)} s</b>` : 'pas encore de temps'}</span>
       <span class="foot"><span class="count">${n ? n + ' essai' + (n > 1 ? 's' : '') : ''}</span><span class="rec" data-sid="${esc(s.id)}"></span></span>
+      ${n || c.passages.some(p => p.d === s.id || p.r === s.id) ? `<span class="tile-del" data-runs="${esc(s.id)}" title="Voir / effacer ses temps">🗑</span>` : ''}
     </button>`;
   }).join('') : '<div class="empty">Aucun élève.</div>';
-  $$('#sp-tiles .tile').forEach(t => t.onclick = () => spPick(t.dataset.id));
+  $$('#sp-tiles .tile').forEach(t => t.onclick = e => { const r = e.target.closest('[data-runs]'); if (r) runsModal(r.dataset.runs, renderSprintTiles); else spPick(t.dataset.id); });
   [0, 1].forEach(i => {
     const slot = $('#sp-slot-' + i), id = spSel[i];
     slot.classList.toggle('filled', !!id);
@@ -902,6 +1007,7 @@ function renderTiles() {
   const c = cls(), el = $('#tiles'), list = relayStudents(c);
   $('#group-info').innerHTML = c.ng && c.myGroup != null && !isProf() ? `· Groupe ${c.myGroup} · ${list.length} élèves` : `· ${list.length} élèves`;
   $('#rel-group').classList.toggle('hidden', isProf() || !c.ng);
+  paintVidSet();
   el.innerHTML = list.length ? list.map(s => {
     const n = c.passages.filter(p => p.d === s.id || p.r === s.id).length, b = best50(c, s.id);
     const role = sel.d === s.id ? 'd' : sel.r === s.id ? 'r' : '';
@@ -910,9 +1016,10 @@ function renderTiles() {
       <span class="top"><span class="nom">${esc(dnStudent(c, s))}</span>${sexBadge(s.sexe)}</span>
       <span class="perf">${b != null ? `50 m : <b>${fmt(b)} s</b>` : '<span class="flag">pas de 50 m</span>'}</span>
       <span class="foot"><span class="count">${n}/4 course${n > 1 ? 's' : ''}</span><span class="rec" data-sid="${esc(s.id)}"></span></span>
+      ${n || c.sprints.some(x => x.sid === s.id) ? `<span class="tile-del" data-runs="${esc(s.id)}" title="Voir / effacer ses temps">🗑</span>` : ''}
     </button>`;
   }).join('') : '<div class="empty">Aucun élève.</div>';
-  el.querySelectorAll('.tile').forEach(t => t.onclick = () => pick(t.dataset.id));
+  el.querySelectorAll('.tile').forEach(t => t.onclick = e => { const r = e.target.closest('[data-runs]'); if (r) runsModal(r.dataset.runs, renderTiles); else pick(t.dataset.id); });
   updateSelBar(); updateRec();
 }
 function pick(id) {
@@ -940,6 +1047,126 @@ function updateSelBar() {
 }
 $('#sel-clear').onclick = () => { sel = { d: null, r: null }; renderTiles(); };
 
+/* =====================================================================
+   VIDÉO DIFFÉRÉE (facultative) : la tablette filme le relais, puis le rejoue
+   après quelques secondes, critères incrustés sur la vidéo.
+   La vidéo reste en mémoire le temps de l'évaluation : jamais enregistrée ni envoyée.
+   ===================================================================== */
+const VID = { stream: null, rec: null, chunks: [], t0: 0, url: null, marks: null, pid: null, busy: false, timer: null };
+const vidOK = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+function paintVidSet() {
+  const on = !!S.settings.video;
+  $('#vid-toggle').textContent = `🎥 Vidéo différée : ${on ? 'oui' : 'non'}`;
+  $('#vid-toggle').classList.toggle('primary', on); $('#vid-toggle').classList.toggle('ghost', !on);
+  $('#vid-delay-l').classList.toggle('hidden', !on);
+  $('#vid-delay').value = String(S.settings.vdelay || 5);
+}
+$('#vid-toggle').onclick = () => {
+  if (!S.settings.video && !vidOK()) { toast('Vidéo indisponible sur cet appareil'); return; }
+  S.settings.video = !S.settings.video; save(); if (!S.settings.video) vidOff(); paintVidSet();
+  if (S.settings.video) toast('La tablette filmera chaque relais puis le rejouera');
+};
+$('#vid-delay').onchange = e => { S.settings.vdelay = +e.target.value; save(); };
+async function vidStart() {
+  if (!S.settings.video || !vidOK()) return;
+  try {
+    if (!VID.stream) VID.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    const pv = $('#c-preview'); if (pv.srcObject !== VID.stream) { pv.srcObject = VID.stream; pv.play().catch(() => {}); }
+    $('#c-camstate').textContent = run && run.t0 !== null ? '● enregistrement' : 'prête : l\'enregistrement démarre au top « Début »';
+  } catch (e) {
+    $('#c-camstate').textContent = 'caméra refusée ou indisponible : vidéo désactivée';
+    S.settings.video = false; save();
+  }
+}
+function vidRecord() {
+  if (!S.settings.video || !VID.stream) return;
+  vidDiscard();
+  const mime = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+  try { VID.rec = new MediaRecorder(VID.stream, mime ? { mimeType: mime } : undefined); } catch (e) { return; }
+  VID.chunks = []; VID.mime = VID.rec.mimeType || mime || 'video/mp4';
+  VID.rec.ondataavailable = e => { if (e.data && e.data.size) VID.chunks.push(e.data); };
+  VID.rec.start(250); VID.t0 = performance.now();
+  $('#c-camstate').textContent = '● enregistrement';
+}
+function vidDiscard() { if (VID.rec && VID.rec.state !== 'inactive') { VID.rec.ondataavailable = null; VID.rec.onstop = null; try { VID.rec.stop(); } catch (e) {} } VID.rec = null; VID.chunks = []; }
+function vidOff() { vidDiscard(); if (VID.stream) VID.stream.getTracks().forEach(t => t.stop()); VID.stream = null; }
+function vidClear() { clearInterval(VID.timer); if (VID.url) URL.revokeObjectURL(VID.url); VID.url = null; VID.marks = null; VID.pid = null; VID.busy = false; $('#e-video').innerHTML = ''; delete $('#e-video').dataset.pid; }
+function vidFinish(pid, r, failed) {
+  vidClear();
+  if (!VID.rec || VID.rec.state === 'inactive') return;
+  const off = (r.t0 - VID.t0) / 1000, m = r.marks;
+  VID.marks = { start: off, in: m[0] != null ? off + m[0] / 1000 : null, out: m[1] != null ? off + m[1] / 1000 : null,
+    end: off + (m[2] != null ? m[2] : (performance.now() - r.t0)) / 1000 };
+  VID.pid = pid; VID.busy = true;
+  const rec = VID.rec;
+  setTimeout(() => {   // on garde 1 s après l'arrivée
+    rec.onstop = () => {
+      VID.busy = false;
+      if (VID.pid !== pid) return;
+      VID.url = URL.createObjectURL(new Blob(VID.chunks, { type: VID.mime }));
+      VID.rec = null;
+      if (view === 'eval') renderEval();
+    };
+    try { rec.stop(); } catch (e) { VID.busy = false; }
+  }, 1000);
+}
+function renderVideoBox(p) {
+  const box = $('#e-video');
+  if (VID.pid !== p.id || (!VID.url && !VID.busy)) { if (box.innerHTML) { box.innerHTML = ''; delete box.dataset.pid; } return; }
+  if (!VID.url) { box.innerHTML = `<div class="vbox wait"><div class="v-count">🎥 Préparation de la vidéo…</div><div class="v-overlay" id="v-crit"></div></div>`; box.dataset.pid = ''; return; }
+  if (box.dataset.pid === p.id) return;          // déjà en place : on ne relance pas la vidéo
+  box.dataset.pid = p.id;
+  const M = VID.marks, dur = M.end + 1;
+  const pc = t => Math.max(0, Math.min(100, t / dur * 100));
+  box.innerHTML = `<div class="vbox">
+    <video id="e-vid" playsinline webkit-playsinline muted preload="auto" src="${VID.url}"></video>
+    <div class="v-count" id="v-count"></div>
+    <div class="v-top">
+      <button class="vb" data-vj="start">↺ Revoir</button>
+      ${M.in != null ? `<button class="vb" data-vj="zone">🐢 Zone au ralenti</button>` : ''}
+      <button class="vb" data-vj="pause">⏯</button>
+      <button class="vb" data-vj="hide">👁 Critères</button>
+    </div>
+    <div class="v-line"><div class="v-prog" id="v-prog"></div>
+      <i style="left:${pc(M.start)}%" title="Début"></i>${M.in != null ? `<i class="z" style="left:${pc(M.in)}%;width:${M.out != null ? pc(M.out) - pc(M.in) : 1}%"></i>` : ''}<i style="left:${pc(M.end)}%" title="Arrivée"></i></div>
+    <div class="v-overlay" id="v-crit"></div>
+  </div>`;
+  const v = $('#e-vid');
+  let stopAt = null;
+  // vidéo webm (Chrome/Android) : durée inconnue tant qu'on n'a pas sauté à la fin → on force le calcul
+  let ready = false;
+  const whenReady = fn => ready ? fn() : (v._q = (v._q || []).concat(fn));
+  v.onloadedmetadata = () => {
+    const done = () => { ready = true; (v._q || []).forEach(f => f()); v._q = []; };
+    if (v.duration === Infinity || isNaN(v.duration)) {
+      v.ondurationchange = () => { if (v.duration !== Infinity && !isNaN(v.duration)) { v.ondurationchange = null; v.currentTime = 0; done(); } };
+      v.currentTime = 1e6;
+    } else done();
+  };
+  v.ontimeupdate = () => {
+    const pg = $('#v-prog'); if (!pg) return;
+    pg.style.width = pc(v.currentTime) + '%';
+    if (stopAt != null && v.currentTime >= stopAt) { v.pause(); v.playbackRate = 1; stopAt = null; }
+  };
+  const play = (from, rate = 1, until = null) => whenReady(() => { v.currentTime = Math.max(0, from); v.playbackRate = rate; stopAt = until; v.play().catch(() => {}); });
+  box.querySelectorAll('[data-vj]').forEach(b => b.onclick = () => {
+    clearInterval(VID.timer); $('#v-count').textContent = '';
+    const j = b.dataset.vj;
+    if (j === 'start') play(M.start - 0.5);
+    else if (j === 'zone') play(M.in - 1, 0.5, (M.out ?? M.in + 2) + 1);
+    else if (j === 'pause') v.paused ? v.play().catch(() => {}) : v.pause();
+    else if (j === 'hide') box.querySelector('.vbox').classList.toggle('no-ov');
+  });
+  // relecture différée
+  let n = S.settings.vdelay || 5;
+  $('#v-count').textContent = `Relecture dans ${n} s`;
+  VID.timer = setInterval(() => {
+    n--;
+    if (n > 0) { $('#v-count').textContent = `Relecture dans ${n} s`; return; }
+    clearInterval(VID.timer); $('#v-count').textContent = ''; play(M.start - 0.5);
+  }, 1000);
+}
+
 let run = null, raf = null, wake = null;
 function startRun(d, r) { run = { d, r, t0: null, marks: [] }; sel = { d: null, r: null }; show('chrono'); requestWake(); }
 function paintPair() {
@@ -955,6 +1182,8 @@ function step() { return run.t0 === null ? 0 : run.marks.length + 1; }
 function renderChrono() {
   if (!run) { show('tiles'); return; }
   paintPair();
+  $('#c-cam').classList.toggle('hidden', !S.settings.video);
+  if (S.settings.video) vidStart();
   const st = step();
   $$('.cbtn').forEach(b => { const k = +b.dataset.step; b.classList.toggle('next', k === st); b.classList.toggle('done', k < st); b.disabled = k !== st; });
   $('#c-fail').disabled = run.t0 === null;
@@ -975,7 +1204,7 @@ $$('.cbtn').forEach(b => b.addEventListener('pointerdown', e => {
   e.preventDefault();
   if (!run || +b.dataset.step !== step()) return;
   const now = performance.now();
-  if (run.t0 === null) { run.t0 = now; tick(); } else run.marks.push(now - run.t0);
+  if (run.t0 === null) { run.t0 = now; tick(); vidRecord(); } else run.marks.push(now - run.t0);
   if (navigator.vibrate) navigator.vibrate(30);
   renderChrono(); updateRec();
   if (run.marks.length === 3) { run.endAt = Date.now(); cancelAnimationFrame(raf); setTimeout(() => toEval(false), 350); }
@@ -983,13 +1212,13 @@ $$('.cbtn').forEach(b => b.addEventListener('pointerdown', e => {
 $('#c-fail').onclick = () => { if (run && run.t0 !== null) { run.endAt = Date.now(); cancelAnimationFrame(raf); toEval(true); } };
 $('#c-undo').onclick = () => {
   if (!run) return;
-  if (run.marks.length) run.marks.pop(); else if (run.t0 !== null) run.t0 = null;
+  if (run.marks.length) run.marks.pop(); else if (run.t0 !== null) { run.t0 = null; vidDiscard(); }
   cancelAnimationFrame(raf); renderChrono(); if (run.t0 !== null) tick();
 };
-$('#c-reset').onclick = () => { if (!run) return; run.t0 = null; run.marks = []; cancelAnimationFrame(raf); renderChrono(); };
+$('#c-reset').onclick = () => { if (!run) return; run.t0 = null; run.marks = []; cancelAnimationFrame(raf); vidDiscard(); renderChrono(); };
 $('#c-cancel').onclick = () => {
   if (run && run.t0 !== null && !confirm('Revenir aux élèves sans enregistrer ? (si le passage a échoué, utilisez « Passage raté »)')) return;
-  run = null; stopClock(); show('tiles');
+  run = null; stopClock(); vidDiscard(); show('tiles');
 };
 async function requestWake() { try { if ('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
 function releaseWake() { try { wake && wake.release(); } catch (e) {} wake = null; }
@@ -1006,6 +1235,7 @@ function toEval(failed) {
     tIn: tIn != null ? Math.round(tIn) : null, tZt: sp2 ? Math.round(sp2.tZt) : null, tEnd: !failed && tEnd != null ? Math.round(tEnd) : null,
     cible: cible100(c, run.d, run.r), fail: failed ? '' : null, c: {}, cfg: { total, zt }
   });
+  vidFinish(S.pending.id, run, failed);
   save(); run = null; show('eval');
 }
 function renderEval() {
@@ -1034,20 +1264,34 @@ function renderEval() {
   $('#e-fail').classList.toggle('hidden', p.fail === null);
   $('#fail-btns').innerHTML = FAILS.map(f => `<button class="btn no ${p.fail === f.k ? 'chosen' : ''}" data-fail="${f.k}">${f.label}</button>`).join('');
   $$('#fail-btns .btn').forEach(b => b.onclick = () => { p.fail = b.dataset.fail; save(); renderEval(); });
-  $('#e-crits').innerHTML = crits(c).map((cr, i) => `
-    <div class="card crit ${p.c[cr.k] === undefined ? 'todo' : ''}">
-      <h3>${i + 1}. ${esc(cr.l)}</h3>
-      <div class="yn">
-        <button class="btn yes ${p.c[cr.k] === true ? 'chosen' : ''}" data-k="${cr.k}" data-v="1">Oui</button>
-        <button class="btn no ${p.c[cr.k] === false ? 'chosen' : ''}" data-k="${cr.k}" data-v="0">Non</button>
-      </div>
-    </div>`).join('');
-  $$('#e-crits .yn .btn').forEach(b => b.onclick = () => { p.c[b.dataset.k] = b.dataset.v === '1'; save(); renderEval(); });
+  const withVid = VID.pid === p.id && (VID.url || VID.busy);
+  renderVideoBox(p);
+  $('#e-crits').innerHTML = withVid ? '' : critHTML(c, p, false);
+  if (withVid) $('#v-crit').innerHTML = critHTML(c, p, true) + `<div class="v-save">${missing(p).length ? `<span>🔒 ${missing(p).length} à renseigner</span>` : '<button class="btn primary" id="v-save">✓ Enregistrer le passage</button>'}</div>`;
+  $$('#e-crits [data-k], #v-crit [data-k]').forEach(b => b.onclick = () => {
+    const k = b.dataset.k;
+    p.c[k] = b.dataset.v !== undefined ? b.dataset.v === '1' : b.dataset.s !== undefined ? +b.dataset.s : +b.dataset.o;
+    save(); renderEval();
+  });
+  if ($('#v-save')) $('#v-save').onclick = () => $('#e-save').onclick();
   const miss = missing(p);
   $('#e-save').disabled = miss.length > 0;
   $('#e-status').innerHTML = miss.length
     ? `<span class="warn">🔒 Encore ${miss.length} élément${miss.length > 1 ? 's' : ''} à renseigner avant le binôme suivant</span>`
     : `<span class="okmsg">✓ Tout est renseigné</span>`;
+}
+function critHTML(c, p, compact) {
+  return crits(c).map((cr, i) => {
+    const v = p.c[cr.k], t = ctype(cr);
+    let ctl;
+    if (t === 'scale') ctl = `<div class="scale10">${Array.from({ length: 10 }, (_, j) => j + 1).map(n => `<button class="sc ${v === n ? 'chosen' : ''}" data-k="${cr.k}" data-s="${n}" style="--h:${(n - 1) * 13}">${n}</button>`).join('')}</div>
+      ${compact ? '' : '<div class="scale-legend"><span>1 · moins bien</span><span>10 · parfait</span></div>'}`;
+    else if (t === 'free') ctl = `<div class="yn free">${(cr.o || []).map((o, j) => `<button class="btn opt ${v === j ? 'chosen' : ''}" data-k="${cr.k}" data-o="${j}">${esc(o)}</button>`).join('')}</div>`;
+    else ctl = `<div class="yn"><button class="btn yes ${v === true ? 'chosen' : ''}" data-k="${cr.k}" data-v="1">Oui</button>
+        <button class="btn no ${v === false ? 'chosen' : ''}" data-k="${cr.k}" data-v="0">Non</button></div>`;
+    return compact ? `<div class="v-row ${v === undefined ? 'todo' : ''}"><span class="v-lbl">${i + 1}. ${esc(cr.l)}</span>${ctl}</div>`
+      : `<div class="card crit ${v === undefined ? 'todo' : ''}"><h3>${i + 1}. ${esc(cr.l)}</h3>${ctl}</div>`;
+  }).join('');
 }
 function missing(p) {
   const m = crits(cls()).filter(cr => p.c[cr.k] === undefined).map(cr => cr.k);
@@ -1056,21 +1300,21 @@ function missing(p) {
 }
 function flashMissing() {
   if (view !== 'eval') return;
-  $$('#e-crits .crit.todo, #e-fail').forEach(el => { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); });
+  $$('#e-crits .crit.todo, #v-crit .v-row.todo, #e-fail').forEach(el => { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); });
   const first = $('#e-crits .crit.todo'); if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 const gapCls = g => GAP_BINS.find(b => b.test(g)).cls;
 $('#e-save').onclick = () => {
   const p = S.pending; if (!p) return;
   if (missing(p).length) { toast('Renseignez tous les critères'); flashMissing(); return; }
-  cls().passages.push(p); S.pending = null; save();
+  cls().passages.push(p); S.pending = null; save(); vidClear();
   toast(p.fail ? 'Passage raté enregistré (1 ★)' : `Passage enregistré${p.stars ? ' · ' + '★'.repeat(p.stars) : ''}`);
   show('tiles');
 };
 $('#e-redo').onclick = () => {
   const p = S.pending; if (!p) return;
   if (!confirm('Erreur de chronométrage ? Ce passage sera effacé et le chrono relancé pour le même binôme.')) return;
-  S.pending = null; save(); startRun(p.d, p.r);
+  S.pending = null; save(); vidClear(); startRun(p.d, p.r);
 };
 
 /* =====================================================================
@@ -1093,7 +1337,14 @@ function fillFilters(c) {
 }
 $('#b-date').onchange = $('#b-tab').onchange = () => renderBilan(true);
 function critStats(c, list) {
-  return crits(c).map(cr => ({ ...cr, label: cr.l, yes: list.filter(p => p.c && p.c[cr.k] === true).length, n: list.filter(p => p.c && p.c[cr.k] !== undefined).length }));
+  return crits(c).map(cr => {
+    const t = ctype(cr), vals = list.map(p => p.c && p.c[cr.k]).filter(v => v !== undefined && v !== null);
+    const sc = vals.map(v => critScore(cr, v)).filter(x => x != null);
+    const dist = t === 'free' ? (cr.o || []).map((_, j) => vals.filter(v => v === j).length) : t === 'scale' ? Array.from({ length: 10 }, (_, j) => vals.filter(v => v === j + 1).length) : null;
+    return { ...cr, label: cr.l, t, n: vals.length, yes: vals.filter(v => v === true).length, dist,
+      mean: t === 'scale' && vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null,
+      score: sc.length ? sc.reduce((a, b) => a + b, 0) / sc.length : null, nScored: sc.length, sumScore: sc.reduce((a, b) => a + b, 0) };
+  });
 }
 function stats(c, list) {
   const fails = list.filter(p => p.fail), gaps = list.map(p => p.gap).filter(g => g != null);
@@ -1112,7 +1363,7 @@ function result(c, sid, F) {
   const starsList = mine.map(p => passStars(c, p)).filter(x => x != null).sort((a, b) => b - a);
   const used = starsList.slice(0, 4), n = used.length, sum = used.reduce((a, b) => a + b, 0);
   const stars = n ? Math.min(16, Math.round(sum * 4 / n)) : null;
-  const cs = critStats(c, mine), y = cs.reduce((a, x) => a + x.yes, 0), o = cs.reduce((a, x) => a + x.n, 0);
+  const cs = critStats(c, mine), y = cs.reduce((a, x) => a + x.sumScore, 0), o = cs.reduce((a, x) => a + x.nScored, 0);
   const rate = o ? y / o : null;
   const et = stars != null ? etNote(stars, rate, c.overrides[sid], n >= 4 && sum === 16) : null;
   const parts = [ind, col, et ? et.note : null];
@@ -1158,10 +1409,18 @@ function renderBilan(keepFilters) {
     save(); renderBilan(true);
   });
   $('#b-crit').innerHTML = st.N ? st.crit.map(cr => {
-    const p = pct(cr.yes, cr.n);
-    return `<div class="bar-row"><div class="bar-label">${esc(cr.label)}</div>
-      <div class="bar"><div class="fill ${p >= 70 ? 'hi' : p >= 40 ? 'mid' : 'lo'}" style="width:${p}%"></div></div>
-      <div class="bar-val"><b>${p} %</b><small>${cr.yes}/${cr.n}</small></div></div>`;
+    const sm = critSummary(cr), lbl = `<div class="bar-label">${esc(cr.label)}<small>${CTYPES[cr.t]}</small></div>`;
+    if (cr.t === 'free') {
+      const n = cr.o.length;
+      return `<div class="bar-row">${lbl}
+        <div class="stack">${cr.dist.map((k, j) => k ? `<div class="seg-f ${cr.ord ? 'o' + Math.round(j / Math.max(1, n - 1) * 4) : 'q' + (j % 6)}" style="width:${pct(k, cr.n)}%" title="${esc(cr.o[j])}">${pct(k, cr.n) >= 12 ? esc(cr.o[j]) + ' ' + pct(k, cr.n) + ' %' : ''}</div>` : '').join('')}</div>
+        <div class="bar-val"><b>${esc(sm.main)}</b><small>${sm.sub}</small></div>
+        <div class="stack-legend">${cr.o.map((o, j) => `<span><i class="${cr.ord ? 'o' + Math.round(j / Math.max(1, n - 1) * 4) : 'q' + (j % 6)}"></i>${esc(o)} : ${cr.dist[j]}</span>`).join('')}</div></div>`;
+    }
+    const w = cr.score != null ? Math.round(cr.score * 100) : 0;
+    return `<div class="bar-row">${lbl}
+      <div class="bar"><div class="fill ${scoreCls(cr.score)}" style="width:${w}%"></div></div>
+      <div class="bar-val"><b>${sm.main}</b><small>${sm.sub}</small></div></div>`;
   }).join('') : '<div class="empty">Aucun relais pour ce filtre.</div>';
   const maxBin = Math.max(1, ...st.bins.map(b => b.n));
   $('#b-gap').innerHTML = st.gaps.length ? st.bins.map(b => `
@@ -1177,7 +1436,7 @@ function renderBilan(keepFilters) {
       <td class="name">${esc(dnStudent(c, r.s))}</td>
       <td>${r.mine.length ? `${r.mine.length} <small style="display:inline">(${r.mine.filter(p => p.d === r.sid).length} / ${r.mine.filter(p => p.r === r.sid).length})</small>` : '–'}</td>
       <td>${s2.mean != null ? fgap(s2.mean) : '–'}</td><td>${fit(r.itMean)}</td>
-      ${s2.crit.map(cr => `<td>${cr.n ? `<span class="chip ${pct(cr.yes, cr.n) >= 70 ? 'hi' : pct(cr.yes, cr.n) >= 40 ? 'mid' : 'lo'}">${cr.yes}/${cr.n}</span>` : '–'}</td>`).join('')}
+      ${s2.crit.map(cr => { const sm = critSummary(cr); return `<td>${cr.n ? `<span class="chip ${scoreCls(cr.score)}">${esc(cr.t === 'yn' ? `${cr.yes}/${cr.n}` : sm.main)}</span>${cr.t === 'free' ? `<span class="sub">${sm.sub}</span>` : ''}` : '–'}</td>`; }).join('')}
     </tr>`; }).join('')}`;
   const h = [...list].sort((a, b) => b.ts - a.ts);
   $('#h-count').textContent = `(${h.length})`;
@@ -1190,14 +1449,15 @@ function renderBilan(keepFilters) {
         ${p.gap != null ? `<span class="tag ${gapCls(p.gap)}">Zt ${fgap(p.gap)}</span>` : ''}
         <span class="role d">D</span> ${esc(dn(c, p.d, p.dSnap))} → <span class="role r">R</span> ${esc(dn(c, p.r, p.rSnap))}
         <div class="meta">${new Date(p.ts).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })} · ${esc(p.tablet || 'tablette sans nom')} · ${distOf(p)} m en ${fmt(p.tEnd)} s${p.tgt != null ? ` · cible ${fmt(p.tgt)} s` : ''} · IT ${fit(it)}</div>
-        <div class="crit-marks">${crits(c).map(cr => p.c[cr.k] === undefined ? '' : `<span class="${p.c[cr.k] ? 'y' : 'n'}">${p.c[cr.k] ? '✓' : '✗'} ${esc(cr.l)}</span>`).join('')}</div>
+        <div class="crit-marks">${crits(c).map(cr => { const v = p.c[cr.k]; if (v === undefined) return ''; const sc = critScore(cr, v);
+          return ctype(cr) === 'yn' ? `<span class="${v ? 'y' : 'n'}">${v ? '✓' : '✗'} ${esc(cr.l)}</span>` : `<span class="${sc == null ? 'nt' : sc >= 0.5 ? 'y' : 'n'}">${esc(cr.l)} : <b>${esc(critText(cr, v))}</b></span>`; }).join('')}</div>
       </div>
       <button class="btn danger-ghost small" data-delp="${p.id}">Suppr.</button>
     </div>`;
   }).join('') : '<div class="empty">Aucun relais.</div>';
   $$('#b-hist [data-delp]').forEach(b => b.onclick = () => {
     if (!confirm('Supprimer définitivement ce passage ?')) return;
-    c.passages = c.passages.filter(p => p.id !== b.dataset.delp); save(); renderBilan(true);
+    delRun(c, b.dataset.delp); renderBilan(true);
   });
   const h50 = [...F.spr].sort((a, b) => b.ts - a.ts);
   $('#h50-count').textContent = `(${h50.length})`;
@@ -1207,7 +1467,7 @@ function renderBilan(keepFilters) {
       <button class="btn danger-ghost small" data-dels="${s.id}">Suppr.</button></div>`).join('') : '<div class="empty">Aucun chrono 50 m.</div>';
   $$('#b-hist50 [data-dels]').forEach(b => b.onclick = () => {
     if (!confirm('Supprimer ce temps sur 50 m ?')) return;
-    c.sprints = c.sprints.filter(s => s.id !== b.dataset.dels); save(); renderBilan(true);
+    delRun(c, b.dataset.dels); renderBilan(true);
   });
   return R;
 }
@@ -1237,12 +1497,12 @@ $('#exp-xlsx').onclick = () => {
       new Date(p.ts).toLocaleString('fr-FR'), p.tablet || '', ...nm(p.d, p.dSnap), ...nm(p.r, p.rSnap), distOf(p),
       p.fail ? 'Raté' : 'Réussi', p.fail ? (FAILS.find(f => f.k === p.fail) || {}).label : '',
       sec(p.tEnd), sec(p.tgt), passIT(c, p) ?? '', passStars(c, p) ?? '', sec(p.tIn), sec(p.tZt), p.vZt ?? '', p.vR ?? '', p.gap ?? '',
-      ...crits(c).map(cr => yn(p.c[cr.k]))]));
+      ...crits(c).map(cr => critText(cr, p.c[cr.k]))]));
   const s50 = [['Date', 'Tablette', 'Nom', 'Prénom', 'Temps 50 m (s)']]
     .concat([...F.spr].sort((a, b) => a.ts - b.ts).map(s => [new Date(s.ts).toLocaleString('fr-FR'), s.tablet || '', ...nm(s.sid, s.snap), sec(s.t)]));
   const bil = [['Bilan de classe', c.name], ['Relais', st.N], ['Ratés', st.nFail], ...st.failBy.map(f => ['  ' + f.label, f.n]),
     ['Écart moyen vitesse Zt (%)', st.mean != null ? +st.mean.toFixed(1) : ''], [],
-    ['Critère', 'Oui', 'Observés', '% Oui'], ...st.crit.map(cr => [cr.label, cr.yes, cr.n, pct(cr.yes, cr.n)]), [],
+    ['Critère', 'Type', 'Observés', 'Résultat', 'Détail'], ...st.crit.map(cr => [cr.label, CTYPES[cr.t], cr.n, critSummary(cr).main, cr.t === 'free' ? cr.o.map((o, j) => `${o} : ${cr.dist[j]}`).join(' · ') : cr.t === 'scale' ? cr.dist.map((k, j) => `${j + 1}:${k}`).join(' ') : `${pct(cr.yes, cr.n)} % Oui`]), [],
     ['Écart vitesse Zt', 'Passages', '%'], ...st.bins.map(b => [b.label, b.n, pct(b.n, st.gaps.length)])];
   const wb = XLSX.utils.book_new();
   const add = (aoa, name, w) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = aoa[0].map((_, i) => ({ wch: w(i) })); XLSX.utils.book_append_sheet(wb, ws, name); };

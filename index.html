@@ -58,7 +58,7 @@
       <label class="field">Nom de la classe
         <input id="imp-name" type="text" placeholder="ex : 2nde 4" autocomplete="off">
       </label>
-      <p class="hint">Fichier <b>XLSX</b> ou <b>CSV</b> : <b>Nom en colonne A</b>, <b>Prénom en colonne B</b>, <b>Sexe en colonne C</b> (F / G). Les tablettes élèves reçoivent ensuite la liste par QR code : inutile d'importer le fichier sur chaque tablette.</p>
+      <p class="hint">Fichier <b>XLSX</b> ou <b>CSV</b> : <b>Nom en colonne A</b>, <b>Prénom en colonne B</b>, <b>Sexe en colonne D</b> (F / G, Fille / Garçon, M…). Les tablettes élèves reçoivent ensuite la liste par QR code : inutile d'importer le fichier sur chaque tablette.</p>
       <label class="btn primary file-btn">Choisir le fichier…
         <input id="imp-file" type="file" accept=".xlsx,.xls,.csv,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
       </label>
@@ -89,7 +89,7 @@
         <button id="crit-reset" class="btn ghost small">Rétablir les 4 critères de départ</button>
         <button id="crit-save" class="btn primary small">Enregistrer les critères</button>
       </div>
-      <p class="hint">Les critères sont observés à chaque relais (Oui / Non) et doivent tous être renseignés avant le binôme suivant. Ils partent sur les tablettes avec la séance : renvoyez le QR après une modification.</p>
+      <p class="hint">Pour chaque critère, choisissez la réponse : <b>Oui / Non</b>, <b>échelle de 1 (moins bien) à 10 (parfait)</b> ou <b>libre</b> (vous fixez le nombre de cases et leur texte). Tous doivent être renseignés avant le binôme suivant. Changer le type d'un critère en crée un nouveau dans le bilan. Ils partent sur les tablettes avec la séance : renvoyez le QR après une modification.</p>
     </div>
 
     <h2>Barèmes</h2>
@@ -196,7 +196,11 @@
   <section id="v-tiles" class="view">
     <div class="phase-bar p2">
       <div><span class="ph big">2</span> <b>Relais</b> <span class="meta" id="group-info"></span></div>
-      <button class="btn ghost small" id="rel-group">Changer de groupe</button>
+      <div class="row gap wrap">
+        <div class="vid-set"><button class="btn ghost small" id="vid-toggle">🎥 Vidéo différée : non</button>
+          <label class="inline small" id="vid-delay-l">relecture après <select id="vid-delay"><option value="3">3 s</option><option value="5">5 s</option><option value="8">8 s</option><option value="10">10 s</option></select></label></div>
+        <button class="btn ghost small" id="rel-group">Changer de groupe</button>
+      </div>
     </div>
     <div class="sel-bar">
       <div class="sel-slot" id="slot-d"><span class="role d">D</span><span class="who">Touchez le démarreur</span></div>
@@ -216,6 +220,8 @@
       <div><span class="role r">R</span> <b id="c-r"></b></div>
     </div>
     <div class="target" id="c-target"></div>
+    <div class="cam-row hidden" id="c-cam"><video id="c-preview" playsinline webkit-playsinline muted autoplay></video>
+      <div><b>🎥 Vidéo différée</b><span id="c-camstate" class="meta">caméra en préparation…</span></div></div>
     <div class="clock" id="clock">0,00</div>
     <div class="splits">
       <div class="split"><span>Entrée Zt</span><b id="s1">–</b></div>
@@ -242,6 +248,7 @@
       <div><span class="role d">D</span> <b id="e-d"></b></div>
       <div><span class="role r">R</span> <b id="e-r"></b></div>
     </div>
+    <div id="e-video"></div>
     <div id="e-perf" class="card perf"></div>
     <div id="e-times" class="card times"></div>
     <div id="e-gap" class="card"></div>
@@ -285,7 +292,7 @@
     <div id="b-hist50" class="list"></div>
   </section>
 
-  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v4.0 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
+  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v4.3 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
 </main>
 
 <div id="toast" class="toast"></div>
