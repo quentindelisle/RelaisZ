@@ -118,6 +118,11 @@ function save() {
 }
 function dedupe(list) { const seen = new Set(); return list.filter(s => !seen.has(s.id) && seen.add(s.id)); }
 const cls = () => S.classes.find(c => c.id === S.cur) || null;
+/* Appel du jour : les absents sont retirés des listes, groupes et binômes (l'appel repart à zéro chaque jour) */
+const today = () => dayOf(Date.now());
+const absIds = c => (c && c.absent && c.absent.day === today() ? c.absent.ids : []);
+const isAbs = (c, id) => absIds(c).includes(id);
+const present = c => c.students.filter(s => !isAbs(c, s.id));
 const stu = (c, id) => c.students.find(s => s.id === id);
 const isProf = () => S.mode === 'prof';
 const tabletName = () => S.settings.tablet || (isProf() ? 'Tablette prof' : 'Tablette élève');
@@ -248,12 +253,13 @@ setInterval(updateRec, 1000);
 /* =====================================================================
    NAVIGATION · interface prof / élève
    ===================================================================== */
-const PROF_ONLY = ['menu', 'classes', 'params', 'groupes', 'tgroupes', 'bilan'];
+const PROF_ONLY = ['menu', 'classes', 'params', 'groupes', 'tgroupes', 'bilan', 'appel'];
 const TITLES = {
   role: ['Zones Relais', 'Choix du rôle de la tablette'], menu: ['Espace enseignant', ''], eleve: ['Tablette élève', ''],
   classes: ['Classes', 'Import et choix de la classe'], params: ['Paramètres de la course', 'Distances, récupération, critères'],
   groupes: ['Groupes', 'Une tablette par groupe pour le relais'], send: ['Envoyer', ''], recv: ['Recevoir', ''],
   group: ['Élèves de la tablette', '50 m'], sprint: ['① 50 m départ arrêté', ''], sprun: ['① 50 m', 'Chronomètre'],
+  appel: ['Appel', 'Présents et absents du jour'],
   tgroupes: ['Groupes de travail', 'Glisser les élèves dans les groupes (3 ou 4)'], tg: ['③ Travail de groupe', ''],
   tiles: ['② Relais', ''], chrono: ['② Relais', 'Chronomètre'], eval: ['② Relais', 'Critères du passage'], bilan: ['Bilan chiffré', '']
 };
@@ -263,7 +269,7 @@ function show(v) {
   if (!S.mode) v = 'role';
   else if (S.pending && v !== 'eval') v = 'eval';
   else if (!isProf() && PROF_ONLY.includes(v)) v = 'eleve';
-  if (['tiles', 'bilan', 'group', 'sprint', 'groupes', 'params', 'tg', 'tgroupes'].includes(v) && !cls()) { toast(isProf() ? 'Importez ou choisissez une classe' : 'Recevez d\'abord la séance (QR du prof)'); v = isProf() ? 'classes' : 'eleve'; }
+  if (['tiles', 'bilan', 'group', 'sprint', 'groupes', 'params', 'tg', 'tgroupes', 'appel'].includes(v) && !cls()) { toast(isProf() ? 'Importez ou choisissez une classe' : 'Recevez d\'abord la séance (QR du prof)'); v = isProf() ? 'classes' : 'eleve'; }
   if (view === 'recv' && v !== 'recv') stopScan();
   if (!['tiles', 'tg', 'chrono', 'eval'].includes(v)) vidOff();
   if (view === 'send' && v !== 'send') { clearInterval(qrTimer); $('#send-qr').innerHTML = ''; }
@@ -277,7 +283,7 @@ function show(v) {
   renderTop();
   ({ menu: renderMenu, eleve: renderEleve, classes: renderClasses, params: renderParams, groupes: renderGroupes,
      send: renderSend, recv: renderRecv, group: renderGroup, sprint: renderSprintTiles, sprun: renderSprun, tiles: renderTiles,
-     chrono: renderChrono, eval: renderEval, bilan: renderBilan, tg: renderTg, tgroupes: renderTgroupes }[v] || (() => {}))();
+     chrono: renderChrono, eval: renderEval, bilan: renderBilan, tg: renderTg, tgroupes: renderTgroupes, appel: renderAppel }[v] || (() => {}))();
   updateRec();
   window.scrollTo(0, 0);
 }
@@ -348,7 +354,8 @@ function renderMenu() {
   $('#menu-class').innerHTML = c ? `
     <div class="row between wrap"><div><span class="meta">Classe</span><h2 style="margin:0">${esc(c.name)}</h2>
       <span class="meta">${c.students.length} élèves · ${S.settings.total} m (Zt ${S.settings.zt} m) · ${crits(c).length} critères · récupération ${mmss(recMs())}</span></div>
-      <button class="btn ghost small" data-go="classes">Changer / importer</button></div>`
+      <div class="row gap"><button class="btn ${absIds(c).length || c.absent?.day === today() ? 'ghost' : 'primary'} small" data-go="appel">📋 Appel${c.absent?.day === today() ? ` · ${present(c).length} présents${absIds(c).length ? `, ${absIds(c).length} absent${absIds(c).length > 1 ? 's' : ''}` : ''}` : ' du jour'}</button>
+      <button class="btn ghost small" data-go="classes">Changer / importer</button></div></div>`
     : `<div class="row between wrap"><b>Aucune classe : commencez par importer la liste.</b><button class="btn primary" data-go="classes">Importer une classe</button></div>`;
   if (!c) { $('#menu-steps').innerHTML = ''; return; }
   const n50 = c.students.filter(s => best50(c, s.id) != null).length;
@@ -427,13 +434,13 @@ function buildS(c) {
   return { a: APP, t: 'S', v: 4, ts: Date.now(), cid: c.id, cn: c.name, pin: S.pin,
     set: { total: S.settings.total, zt: S.settings.zt, rec: S.settings.rec },
     crit: crits(c).map(x => [x.k, x.l, ctype(x), x.o || [], x.ord ? 1 : 0]), ng: c.ng || 0,
-    tgN: c.tgN || 0,
+    tgN: c.tgN || 0, abs: { day: today(), ids: absIds(c).map(id => c.students.findIndex(s => s.id === id)).filter(i => i >= 0) },
     st: c.students.map(s => [s.nom, s.prenom, s.sexe || '', best50(c, s.id), c.ng ? (c.grp[s.id] || 0) : 0, c.tgN ? (c.tg[s.id] || 0) : 0]) };
 }
 function applyS(p) {
   if (!p || p.a !== APP || p.t !== 'S') throw new Error('Ce QR n\'est pas une séance Zones Relais');
   let c = S.classes.find(x => x.id === p.cid);
-  if (!c) { c = { id: p.cid, name: p.cn, students: [], passages: [], sprints: [], group: [], overrides: {}, crit: [], grp: {}, ng: 0, b50ext: {}, myGroup: null }; S.classes.push(c); }
+  if (!c) { c = { id: p.cid, name: p.cn, students: [], passages: [], sprints: [], group: [], overrides: {}, crit: [], grp: {}, ng: 0, b50ext: {}, myGroup: null, tg: {}, tgN: 0, myTg: [] }; S.classes.push(c); }
   c.name = p.cn;
   p.st.forEach(([nom, prenom, sexe]) => {
     const id = keyOf(nom, prenom), ex = stu(c, id);
@@ -443,6 +450,7 @@ function applyS(p) {
   c.tg = {}; c.tgN = p.tgN || 0;
   p.st.forEach(([nom, prenom, , , , tg]) => { if (tg) c.tg[keyOf(nom, prenom)] = tg; });
   c.myTg = tgChanged ? [] : (c.myTg || []).filter(g => g <= c.tgN);
+  if (p.abs) c.absent = { day: p.abs.day, ids: p.abs.ids.map(i => p.st[i]).filter(Boolean).map(([n, pr]) => keyOf(n, pr)) };
   c.b50ext = {}; c.grp = {};
   p.st.forEach(([nom, prenom, , b, g]) => { const id = keyOf(nom, prenom); if (b != null) c.b50ext[id] = b; if (g) c.grp[id] = g; });
   const changed = c.ng !== p.ng;
@@ -598,7 +606,7 @@ $('#imp-file').addEventListener('change', async e => {
       </div>`;
     $('#imp-ok').onclick = () => {
       const name = $('#imp-name').value.trim() || 'Classe';
-      const c = { id: uid(), name, students: pending, passages: [], sprints: [], group: [], overrides: {}, crit: DEFAULT_CRIT.map(x => ({ ...x })), grp: {}, ng: 0, b50ext: {}, myGroup: null, created: Date.now() };
+      const c = { id: uid(), name, students: pending, passages: [], sprints: [], group: [], overrides: {}, crit: DEFAULT_CRIT.map(x => ({ ...x })), grp: {}, ng: 0, b50ext: {}, myGroup: null, tg: {}, tgN: 0, myTg: [], created: Date.now() };
       S.classes.push(c); S.cur = c.id; save(); resetImport();
       toast(`Classe « ${name} » créée`); show('menu');
     };
@@ -691,6 +699,32 @@ function renderClasses() {
     save(); show('classes');
   });
 }
+
+/* =====================================================================
+   PROF : appel
+   ===================================================================== */
+let apDraft = new Set();
+function renderAppel() { apDraft = new Set(absIds(cls())); paintAppel(); }
+function paintAppel() {
+  const c = cls(), n = c.students.length, a = apDraft.size;
+  $('#ap-count').textContent = `${n - a} présent${n - a > 1 ? 's' : ''} · ${a} absent${a > 1 ? 's' : ''} · ${new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}`;
+  $('#ap-list').innerHTML = [...c.students].sort(byFirst).map(s => `
+    <div class="tile check ap ${apDraft.has(s.id) ? 'absent' : 'on'}" data-ap="${esc(s.id)}">
+      <span class="box">${apDraft.has(s.id) ? '✕' : '✓'}</span><span class="nom">${esc(dnStudent(c, s))}<small>${apDraft.has(s.id) ? 'absent' : 'présent'}</small></span>
+      <button class="sex ${s.sexe || 'none'}" data-apsex="${esc(s.id)}">${s.sexe || 'F/G ?'}</button>
+    </div>`).join('');
+  $$('#ap-list [data-ap]').forEach(t => t.onclick = e => {
+    if (e.target.closest('[data-apsex]')) return;
+    const id = t.dataset.ap; apDraft.has(id) ? apDraft.delete(id) : apDraft.add(id); paintAppel();
+  });
+  $$('#ap-list [data-apsex]').forEach(b => b.onclick = () => { const st = stu(c, b.dataset.apsex); st.sexe = st.sexe === 'F' ? 'G' : st.sexe === 'G' ? '' : 'F'; save(); paintAppel(); });
+}
+$('#ap-all').onclick = () => { apDraft = new Set(); paintAppel(); };
+$('#ap-ok').onclick = () => {
+  const c = cls(); c.absent = { day: today(), ids: [...apDraft] }; save();
+  const inGrp = [...apDraft].filter(id => (c.grp || {})[id] || (c.tg || {})[id]).length;
+  toast(`Appel enregistré · ${apDraft.size} absent(s)${inGrp ? ' · renvoyez la séance aux tablettes' : ''}`, 3500); show('menu');
+};
 
 /* =====================================================================
    PROF : paramètres + critères observables
@@ -823,7 +857,7 @@ function hintMode() {
 function propose() {
   const c = cls(), mix = $('#gr-mix').checked && gMode !== 'homo';
   const lv = id => level(c, id);
-  let list = [...c.students];
+  let list = present(c);
   if (gMode === 'alea') list.sort(() => Math.random() - 0.5); else list.sort((a, b) => (lv(b.id) ?? -1e9) - (lv(a.id) ?? -1e9));
   if (mix) { const F = list.filter(s => s.sexe === 'F'), G = list.filter(s => s.sexe === 'G'), X = list.filter(s => !s.sexe); list = [...F, ...G, ...X]; }
   gDraft = {};
@@ -839,7 +873,7 @@ function paintBoard() {
   const c = cls();
   const chip = s => {
     const b = best50(c, s.id);
-    return `<button class="g-chip ${gPick === s.id ? 'pick' : ''}" data-chip="${esc(s.id)}"><span class="sex ${s.sexe || 'none'}" data-sexid="${esc(s.id)}" title="Toucher pour changer F / G">${s.sexe || '?'}</span> <b>${esc(dnStudent(c, s))}</b><span>${b != null ? fmt(b) + ' s' : '–'}</span></button>`;
+    return `<button class="g-chip ${gPick === s.id ? 'pick' : ''} ${isAbs(c, s.id) ? 'abs' : ''}" data-chip="${esc(s.id)}"><span class="sex ${s.sexe || 'none'}" data-sexid="${esc(s.id)}" title="Toucher pour changer F / G">${s.sexe || '?'}</span> <b>${esc(dnStudent(c, s))}</b><span>${b != null ? fmt(b) + ' s' : '–'}</span></button>`;
   };
   $('#gr-board').innerHTML = Array.from({ length: gN + 1 }, (_, g) => g).map(g => {
     const mem = c.students.filter(s => (gDraft[s.id] || 0) === g).sort((a, b) => (level(c, b.id) ?? -1e9) - (level(c, a.id) ?? -1e9));
@@ -880,7 +914,7 @@ let gSel = new Set();
 function renderGroup() { gSel = new Set(cls().group); paintGroup(); }
 function paintGroup() {
   const c = cls();
-  $('#g-list').innerHTML = [...c.students].sort(byFirst).map(s => `
+  $('#g-list').innerHTML = present(c).sort(byFirst).map(s => `
     <div class="tile check ${gSel.has(s.id) ? 'on' : ''}" data-id="${esc(s.id)}">
       <span class="box">${gSel.has(s.id) ? '✓' : ''}</span><span class="nom">${esc(dnStudent(c, s))}</span>
       ${isProf() ? `<button class="sex ${s.sexe || 'none'}" data-sex="${esc(s.id)}">${s.sexe || 'F/G ?'}</button>` : sexBadge(s.sexe)}
@@ -904,11 +938,11 @@ $('#sp-group').onclick = () => show('group');
 $('#rel-group').onclick = () => show('eleve');
 function sprintStudents(c) {
   const g = new Set(c.group);
-  return c.students.filter(s => !g.size || g.has(s.id)).sort(byFirst);
+  return c.students.filter(s => (!g.size || g.has(s.id)) && !isAbs(c, s.id)).sort(byFirst);
 }
 function relayStudents(c) {
-  if (c.ng && c.myGroup != null && !isProf()) return c.students.filter(s => c.grp[s.id] === c.myGroup).sort(byFirst);
-  return [...c.students].sort(byFirst);
+  if (c.ng && c.myGroup != null && !isProf()) return c.students.filter(s => c.grp[s.id] === c.myGroup && !isAbs(c, s.id)).sort(byFirst);
+  return c.students.filter(s => !isAbs(c, s.id)).sort(byFirst);
 }
 
 /* =====================================================================
@@ -926,7 +960,7 @@ const fpied = v => v == null ? '–' : String(v).replace('.', ',');
 const txVal = (t, v) => v == null ? '' : t.k === 'rep' ? v : (t.o.find(o => o[0] === v) || [, '?'])[1];
 const txText = x => x && x.md ? `${x.md === 'D' ? 'Droite' : 'Gauche'} → ${x.mr === 'D' ? 'droite' : 'gauche'} · ${x.sens === 'M' ? 'montante' : 'descendante'} · ${fpied(x.rep)} pieds · ${({ D: 'début', M: 'milieu', F: 'fin' })[x.mom] || '?'} de zone` : '—';
 const txSame = (a, b) => !!(a && b && a.md === b.md && a.mr === b.mr && a.sens === b.sens && a.mom === b.mom && Math.abs((a.rep ?? 0) - (b.rep ?? 0)) <= 0.5);
-function tgMembers(c, g) { return c.students.filter(s => c.tg[s.id] === g).sort(byFirst); }
+function tgMembers(c, g, withAbs) { return c.students.filter(s => c.tg[s.id] === g && (withAbs || !isAbs(c, s.id))).sort(byFirst); }
 function tgPairs(c, g) { const m = tgMembers(c, g), out = []; m.forEach(a => m.forEach(b => { if (a.id !== b.id) out.push([a.id, b.id]); })); return out; }
 const pairPass = (c, d, r, list = c.passages) => list.filter(p => p.les === 'tg' && p.d === d && p.r === r);
 function lastTx(c, d, r) { const l = pairPass(c, d, r).filter(p => p.tx && p.tx.md).sort((a, b) => b.ts - a.ts)[0]; return l ? { ...l.tx } : null; }
@@ -956,7 +990,7 @@ function paintTg() {
   const c = cls(), board = $('#tg-board');
   const chip = s => {
     const b = best50(c, s.id);
-    return `<div class="g-chip ${tgPick === s.id ? 'pick' : ''}" data-tchip="${esc(s.id)}">${sexBadge(s.sexe)} <b>${esc(dnStudent(c, s))}</b><span>${b != null ? fmt(b) + ' s' : '–'}</span></div>`;
+    return `<div class="g-chip ${tgPick === s.id ? 'pick' : ''} ${isAbs(c, s.id) ? 'abs' : ''}" data-tchip="${esc(s.id)}">${sexBadge(s.sexe)} <b>${esc(dnStudent(c, s))}</b><span>${b != null ? fmt(b) + ' s' : '–'}</span></div>`;
   };
   board.innerHTML = Array.from({ length: tgCount + 1 }, (_, g) => g).map(g => {
     const mem = c.students.filter(s => (tgDraft[s.id] || 0) === g).sort((a, b) => (level(c, b.id) ?? -1e9) - (level(c, a.id) ?? -1e9));
@@ -998,7 +1032,7 @@ function enableDrag(board) {
   });
 }
 function tgPropose(mode) {
-  const c = cls(), list = [...c.students].sort((a, b) => (level(c, b.id) ?? -1e9) - (level(c, a.id) ?? -1e9));
+  const c = cls(), list = present(c).sort((a, b) => (level(c, b.id) ?? -1e9) - (level(c, a.id) ?? -1e9));
   const k = Math.max(1, Math.ceil(list.length / 4)); tgCount = k; tgDraft = {};
   if (mode === 'homo') {
     const base = Math.floor(list.length / k), extra = list.length % k; let i = 0;

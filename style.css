@@ -457,3 +457,11 @@ label.inline.small{font-size:.88rem}
 .tg-tabs button{padding:10px 16px;font-size:1rem}
 .tg-tabs button small{display:block;font-size:.72rem;font-weight:600;opacity:.8}
 h2 small{font-weight:500}
+
+/* v4.5 : appel */
+.tile.check.ap .nom small{display:block;font-size:.78rem;font-weight:700;color:var(--ok)}
+.tile.check.ap.absent{background:#fff1f2;border-color:#fecdd3;opacity:.85}
+.tile.check.ap.absent .box{background:var(--ko);border-color:var(--ko)}
+.tile.check.ap.absent .nom{text-decoration:line-through;color:#9f1239}
+.tile.check.ap.absent .nom small{color:var(--ko);text-decoration:none}
+.g-chip.abs{opacity:.45;text-decoration:line-through}
