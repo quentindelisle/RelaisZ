@@ -58,7 +58,7 @@
       <label class="field">Nom de la classe
         <input id="imp-name" type="text" placeholder="ex : 2nde 4" autocomplete="off">
       </label>
-      <p class="hint">Fichier <b>XLSX</b> ou <b>CSV</b> : <b>Nom en colonne A</b>, <b>Prénom en colonne B</b>, <b>Sexe en colonne D</b> (F / G, Fille / Garçon, M…). Les tablettes élèves reçoivent ensuite la liste par QR code : inutile d'importer le fichier sur chaque tablette.</p>
+      <p class="hint">Fichier <b>XLSX</b> ou <b>CSV</b> : <b>Nom en colonne A</b>, <b>Prénom en colonne B</b>, <b>Sexe</b> repéré automatiquement (colonne « Sexe » de l'export Pronote : Masculin / Féminin, ou F / G, Fille / Garçon). Les tablettes élèves reçoivent ensuite la liste par QR code : inutile d'importer le fichier sur chaque tablette.</p>
       <label class="btn primary file-btn">Choisir le fichier…
         <input id="imp-file" type="file" accept=".xlsx,.xls,.csv,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
       </label>
@@ -129,6 +129,44 @@
       <button id="gr-save" class="btn primary big">Valider les groupes</button>
       <button id="gr-send" class="btn ghost big">📤 Envoyer aux tablettes</button>
     </div>
+  </section>
+
+  <!-- ============ PROF : groupes de travail (cliquer-glisser) ============ -->
+  <section id="v-tgroupes" class="view">
+    <div class="card">
+      <div class="row gap wrap">
+        <b>Groupes de 3 ou 4 coureurs</b>
+        <button id="tg-add" class="btn ghost small">+ Groupe</button>
+        <button id="tg-del" class="btn ghost small">− Groupe</button>
+        <button id="tg-homo" class="btn ghost small">Proposer : niveaux proches</button>
+        <button id="tg-hetero" class="btn ghost small">Proposer : niveaux mélangés</button>
+        <button id="tg-clear" class="btn danger-ghost small">Tout retirer</button>
+      </div>
+      <p class="hint">Faites glisser chaque élève dans un groupe (ou touchez l'élève puis le titre du groupe). Dans chaque groupe, tous les binômes possibles passent, chaque élève en démarreur ET en relayeur : 6 binômes à 3, 12 à 4.</p>
+    </div>
+    <div id="tg-board" class="gr-board tg-board"></div>
+    <div class="row gap center">
+      <button id="tg-save" class="btn primary big">Valider les groupes</button>
+      <button id="tg-send" class="btn ghost big">📤 Envoyer aux tablettes</button>
+    </div>
+  </section>
+
+  <!-- ============ LEÇON TRAVAIL DE GROUPE ============ -->
+  <section id="v-tg" class="view">
+    <div class="phase-bar p3">
+      <div><span class="ph big">3</span> <b>Travail de groupe</b> <span class="meta" id="tg-info"></span></div>
+      <div class="row gap wrap" id="tg-gsel"></div>
+    </div>
+    <div id="tg-head"></div>
+    <div class="card tg-goals">
+      <b>Objectifs du groupe</b>
+      <ol>
+        <li><b>Battre la cible</b> de chaque binôme : 50 m du démarreur + 50 m du relayeur − 0,3 s.</li>
+        <li><b>Le maximum d'étoiles</b> (indice de transmission) à chaque course.</li>
+        <li><b>Garder les mêmes caractéristiques</b> de transmission : main du donneur, main du receveur, montante / descendante, distance du repère, moment dans la zone.</li>
+      </ol>
+    </div>
+    <div id="tg-pairs" class="pairs"></div>
   </section>
 
   <!-- ============ ENVOI PAR QR ============ -->
@@ -252,6 +290,7 @@
     <div id="e-perf" class="card perf"></div>
     <div id="e-times" class="card times"></div>
     <div id="e-gap" class="card"></div>
+    <div class="card hidden" id="e-tx"></div>
     <div class="card crit hidden" id="e-fail">
       <h3>Passage raté : cause ?</h3>
       <div class="yn" id="fail-btns"></div>
@@ -271,6 +310,7 @@
       <button id="exp-xlsx" class="btn primary small">Exporter XLSX</button>
     </div>
     <div class="card row gap wrap">
+      <label class="inline">Leçon <select id="b-les"><option value="all">Toutes</option><option value="rel">Relais à deux</option><option value="tg">Travail de groupe</option></select></label>
       <label class="inline">Séance <select id="b-date"></select></label>
       <label class="inline">Tablettes <select id="b-tab"></select></label>
     </div>
@@ -280,6 +320,7 @@
     <p class="hint">Meilleur 50 m et meilleur relais retenus. Étoiles : 4 meilleures courses ; avec 2 ou 3 courses, total extrapolé sur 4 (×4/n). Efficacité technique : degré fixé par les étoiles, niveau dans le degré proposé d'après les critères qualitatifs (modifiable).</p>
     <div class="table-wrap"><table id="b-notes"></table></div>
 
+    <div id="b-tg"></div>
     <h2>Critères qualitatifs</h2>
     <div id="b-crit" class="card"></div>
     <h2>Écart de vitesse dans la Zt</h2>
@@ -292,7 +333,7 @@
     <div id="b-hist50" class="list"></div>
   </section>
 
-  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v4.3 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
+  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v4.4 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
 </main>
 
 <div id="toast" class="toast"></div>

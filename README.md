@@ -17,3 +17,10 @@ Premier lancement : *Tablette enseignant* ou *Tablette élève*. Bascule 🧒 É
 Vitesse individuelle /3 (meilleur 50 m, F/G) · vitesse collective /3 (meilleur relais ramené à 100 m, F/G) · efficacité technique /6 (étoiles des 4 meilleures courses, extrapolées si 2–3 courses ; niveau dans le degré selon les critères, modifiable ; 6 seulement avec 16 ★ réelles).
 
 Mise à jour : incrémenter `CACHE` dans `sw.js`.
+
+## Leçon Travail de groupe (v4.4)
+- **Prof** : 🧩 Constituer les groupes (3 ou 4) par cliquer-glisser (ou proposition automatique : niveaux proches / mélangés), puis 📤 Envoyer.
+- **Tablette élève** : ③ Travail de groupe → choix du groupe → tous les binômes possibles (6 à 3, 12 à 4), chaque élève démarreur ET relayeur ; binôme conseillé (le moins de passages, les plus reposés).
+- Objectifs : battre la cible (50 m D + 50 m R − 0,3 s), maximum d'étoiles, caractéristiques stables.
+- À chaque passage : main du donneur, main du receveur, montante / descendante, repère (pieds), moment dans la zone — reprises du passage précédent du binôme, « ⚠ modifié » si changement ; obligatoires.
+- Bilan : filtre Leçon, tableau par groupe et par binôme (cible battue, meilleur IT, étoiles, caractéristiques habituelles, constance %), feuille Excel « Travail de groupe ».

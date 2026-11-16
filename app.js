@@ -107,6 +107,7 @@ function migrate(d) {
     c.crit = c.crit || DEFAULT_CRIT.map(x => ({ ...x }));
     c.grp = c.grp || {}; c.ng = c.ng || 0; c.b50ext = c.b50ext || {}; c.deleted = c.deleted || [];
     if (c.myGroup === undefined) c.myGroup = null;
+    c.tg = c.tg || {}; c.tgN = c.tgN || 0; if (c.myTg === undefined) c.myTg = null;
     c.students.forEach(s => { if (s.sexe === undefined) s.sexe = ''; });
   });
 }
@@ -237,6 +238,7 @@ function updateRec() {
     el.classList.toggle('hidden', !w.length);
     el.innerHTML = w.length ? '⚠️ Récupération insuffisante : ' + w.map(id => `${esc(dn(c, id))} (encore ${mmss(recLeft(c, id))})`).join(' · ') : '';
   };
+  $$('.pair-card[data-d]').forEach(el => el.classList.toggle('resting', recLeft(c, el.dataset.d) > 0 || recLeft(c, el.dataset.r) > 0));
   if (view === 'chrono' && run && run.t0 === null) warnFor([run.d, run.r], $('#c-warn')); else $('#c-warn').classList.add('hidden');
   if (view === 'sprun' && sp && sp.t0 === null) warnFor(sp.runners.map(r => r.sid), $('#sp-warn')); else $('#sp-warn').classList.add('hidden');
 }
@@ -245,12 +247,13 @@ setInterval(updateRec, 1000);
 /* =====================================================================
    NAVIGATION · interface prof / élève
    ===================================================================== */
-const PROF_ONLY = ['menu', 'classes', 'params', 'groupes', 'bilan'];
+const PROF_ONLY = ['menu', 'classes', 'params', 'groupes', 'tgroupes', 'bilan'];
 const TITLES = {
   role: ['Zones Relais', 'Choix du rôle de la tablette'], menu: ['Espace enseignant', ''], eleve: ['Tablette élève', ''],
   classes: ['Classes', 'Import et choix de la classe'], params: ['Paramètres de la course', 'Distances, récupération, critères'],
   groupes: ['Groupes', 'Une tablette par groupe pour le relais'], send: ['Envoyer', ''], recv: ['Recevoir', ''],
   group: ['Élèves de la tablette', '50 m'], sprint: ['① 50 m départ arrêté', ''], sprun: ['① 50 m', 'Chronomètre'],
+  tgroupes: ['Groupes de travail', 'Glisser les élèves dans les groupes (3 ou 4)'], tg: ['③ Travail de groupe', ''],
   tiles: ['② Relais', ''], chrono: ['② Relais', 'Chronomètre'], eval: ['② Relais', 'Critères du passage'], bilan: ['Bilan chiffré', '']
 };
 let view = 'role';
@@ -259,9 +262,9 @@ function show(v) {
   if (!S.mode) v = 'role';
   else if (S.pending && v !== 'eval') v = 'eval';
   else if (!isProf() && PROF_ONLY.includes(v)) v = 'eleve';
-  if (['tiles', 'bilan', 'group', 'sprint', 'groupes', 'params'].includes(v) && !cls()) { toast(isProf() ? 'Importez ou choisissez une classe' : 'Recevez d\'abord la séance (QR du prof)'); v = isProf() ? 'classes' : 'eleve'; }
+  if (['tiles', 'bilan', 'group', 'sprint', 'groupes', 'params', 'tg', 'tgroupes'].includes(v) && !cls()) { toast(isProf() ? 'Importez ou choisissez une classe' : 'Recevez d\'abord la séance (QR du prof)'); v = isProf() ? 'classes' : 'eleve'; }
   if (view === 'recv' && v !== 'recv') stopScan();
-  if (!['tiles', 'chrono', 'eval'].includes(v)) vidOff();
+  if (!['tiles', 'tg', 'chrono', 'eval'].includes(v)) vidOff();
   if (view === 'send' && v !== 'send') { clearInterval(qrTimer); $('#send-qr').innerHTML = ''; }
   view = v;
   $$('.view').forEach(e => e.classList.toggle('active', e.id === 'v-' + v));
@@ -273,7 +276,7 @@ function show(v) {
   renderTop();
   ({ menu: renderMenu, eleve: renderEleve, classes: renderClasses, params: renderParams, groupes: renderGroupes,
      send: renderSend, recv: renderRecv, group: renderGroup, sprint: renderSprintTiles, sprun: renderSprun, tiles: renderTiles,
-     chrono: renderChrono, eval: renderEval, bilan: renderBilan }[v] || (() => {}))();
+     chrono: renderChrono, eval: renderEval, bilan: renderBilan, tg: renderTg, tgroupes: renderTgroupes }[v] || (() => {}))();
   updateRec();
   window.scrollTo(0, 0);
 }
@@ -312,6 +315,8 @@ function openGo(g) {
   else if (g === 'recv-r') { recvKind = 'R'; show('recv'); }
   else if (g === 'recv-s') { recvKind = 'S'; show('recv'); }
   else if (g === 'tiles') { const c = cls(); if (c && !isProf() && c.ng && c.myGroup == null) { show('eleve'); toast('Choisissez d\'abord votre groupe'); } else show('tiles'); }
+  else if (g === 'tg') { const c = cls(); if (c && !isProf() && c.myTg == null) { show('eleve'); toast('Choisissez d\'abord votre groupe de travail'); } else show('tg'); }
+  else if (g === 'bilan-tg') { $('#b-les').value = 'tg'; show('bilan'); setTimeout(() => { const e = $('#b-tg'); if (e) e.scrollIntoView({ behavior: 'smooth' }); }, 200); }
   else show(g);
 }
 
@@ -362,8 +367,13 @@ function renderMenu() {
     step('3', 'Relais à deux · tablettes élèves', `Cible, indice technique, Zt chronométrée et critères. <b>${nRel}</b> relais reçus.`,
       `<button class="tile-btn" data-go="recv-r"><span>📥</span>Récupérer les relais</button>
        <button class="tile-btn orange" data-go="bilan"><span>📊</span>Bilan chiffré</button>`, nRel > 0) +
+    step('4', 'Leçon Travail de groupe', c.tgN ? `<b>${c.tgN} groupes</b> de travail (${Object.keys(c.tg).length} élèves) · <b>${c.passages.filter(p => p.les === 'tg').length}</b> passages reçus. Tous les binômes de chaque groupe, chaque élève démarreur ET relayeur ; caractéristiques de la transmission notées à chaque passage.` : 'Groupes de 3 ou 4 constitués par cliquer-glisser ; chaque binôme vise la cible, le maximum d\'étoiles et des caractéristiques de transmission stables.',
+      `<button class="tile-btn" data-go="tgroupes"><span>🧩</span>Constituer les groupes</button>
+       <button class="tile-btn blue" data-go="send-s" ${c.tgN ? '' : 'disabled'}><span>📤</span>Envoyer les groupes</button>
+       <button class="tile-btn" data-go="recv-r"><span>📥</span>Récupérer</button>
+       <button class="tile-btn orange" data-go="bilan-tg"><span>📊</span>Bilan du travail de groupe</button>`, c.passages.some(p => p.les === 'tg')) +
     `<div class="step local"><div class="step-n">⏱</div><div class="step-body"><h3>Chronométrer sur cette tablette</h3>
-      <div class="step-btns"><button class="tile-btn" data-go="sprint"><span>①</span>50 m</button><button class="tile-btn" data-go="tiles"><span>②</span>Relais</button></div></div></div>`;
+      <div class="step-btns"><button class="tile-btn" data-go="sprint"><span>①</span>50 m</button><button class="tile-btn" data-go="tiles"><span>②</span>Relais</button><button class="tile-btn" data-go="tg"><span>③</span>Travail de groupe</button></div></div></div>`;
 }
 
 /* =====================================================================
@@ -388,12 +398,18 @@ function renderEleve() {
       <button class="home-btn" data-go="recv-s"><span class="ico">📷</span>Recevoir la séance<small>${c.ng ? 'groupes reçus' : 'liste et paramètres reçus'} · rescanner si besoin</small></button>
       <button class="home-btn p1" data-go="sprint"><span class="ico">①</span>50 m départ arrêté<small>${c.sprints.filter(s => s.local).length} chrono(s) sur cette tablette</small></button>
       <button class="home-btn p2" data-go="tiles" ${c.ng && c.myGroup != null ? '' : 'disabled'}><span class="ico">②</span>Relais à deux<small>${c.ng ? (c.myGroup != null ? `Groupe ${c.myGroup}` : 'choisissez votre groupe ci-dessous') : 'en attente des groupes du prof'}</small></button>
+      <button class="home-btn p3" data-go="tg" ${c.tgN && c.myTg != null ? '' : 'disabled'}><span class="ico">③</span>Travail de groupe<small>${c.tgN ? (c.myTg != null ? `Groupe ${c.myTg}` : 'choisissez votre groupe ci-dessous') : 'en attente des groupes du prof'}</small></button>
       <button class="home-btn send ${unsent ? 'todo' : ''}" data-go="send-r"><span class="ico">📤</span>Envoyer mes résultats<small>${unsent ? unsent + ' nouveau(x) résultat(s) à envoyer' : 'tout a été envoyé'}</small></button>
     </div>
     ${groups.length ? `<h2>Choisir mon groupe pour le relais</h2><div class="grp-pick">${groups.map(g => {
       const mem = c.students.filter(s => c.grp[s.id] === g).sort(byFirst);
       return `<button class="grp-btn ${c.myGroup === g ? 'on' : ''}" data-mygrp="${g}"><b>Groupe ${g}</b><span>${mem.map(s => esc(dnStudent(c, s))).join(' · ') || '—'}</span></button>`;
+    }).join('')}</div>` : ''}
+    ${c.tgN ? `<h2>Choisir mon groupe de travail</h2><div class="grp-pick">${Array.from({ length: c.tgN }, (_, i) => i + 1).map(g => {
+      const mem = tgMembers(c, g);
+      return `<button class="grp-btn tgb ${c.myTg === g ? 'on' : ''}" data-mytg="${g}"><b>Groupe ${g}</b><span>${mem.map(s => esc(dnStudent(c, s))).join(' · ') || '—'}</span></button>`;
     }).join('')}</div>` : ''}`;
+  $$('[data-mytg]').forEach(b => b.onclick = () => { c.myTg = +b.dataset.mytg; save(); toast(`Groupe de travail ${c.myTg}`); show('tg'); });
   $$('[data-mygrp]').forEach(b => b.onclick = () => {
     c.myGroup = +b.dataset.mygrp; sel = { d: null, r: null }; save(); toast(`Groupe ${c.myGroup} : ${c.students.filter(s => c.grp[s.id] === c.myGroup).length} élèves`); show('tiles');
   });
@@ -406,7 +422,8 @@ function buildS(c) {
   return { a: APP, t: 'S', v: 4, ts: Date.now(), cid: c.id, cn: c.name, pin: S.pin,
     set: { total: S.settings.total, zt: S.settings.zt, rec: S.settings.rec },
     crit: crits(c).map(x => [x.k, x.l, ctype(x), x.o || [], x.ord ? 1 : 0]), ng: c.ng || 0,
-    st: c.students.map(s => [s.nom, s.prenom, s.sexe || '', best50(c, s.id), c.ng ? (c.grp[s.id] || 0) : 0]) };
+    tgN: c.tgN || 0,
+    st: c.students.map(s => [s.nom, s.prenom, s.sexe || '', best50(c, s.id), c.ng ? (c.grp[s.id] || 0) : 0, c.tgN ? (c.tg[s.id] || 0) : 0]) };
 }
 function applyS(p) {
   if (!p || p.a !== APP || p.t !== 'S') throw new Error('Ce QR n\'est pas une séance Zones Relais');
@@ -417,6 +434,10 @@ function applyS(p) {
     const id = keyOf(nom, prenom), ex = stu(c, id);
     if (ex) { ex.sexe = sexe || ex.sexe; ex.nom = nom; ex.prenom = prenom; } else c.students.push({ id, nom, prenom, sexe });
   });
+  const tgChanged = (c.tgN || 0) !== (p.tgN || 0);
+  c.tg = {}; c.tgN = p.tgN || 0;
+  p.st.forEach(([nom, prenom, , , , tg]) => { if (tg) c.tg[keyOf(nom, prenom)] = tg; });
+  if (tgChanged || (c.myTg != null && c.myTg > c.tgN)) c.myTg = null;
   c.b50ext = {}; c.grp = {};
   p.st.forEach(([nom, prenom, , b, g]) => { const id = keyOf(nom, prenom); if (b != null) c.b50ext[id] = b; if (g) c.grp[id] = g; });
   const changed = c.ng !== p.ng;
@@ -436,7 +457,7 @@ function buildR(c) {
     s: mineS.map(s => [s.id, ix(s.sid), s.t, s.ts, s.endAt || null]),
     p: mineP.map(p => [p.id, p.ts, p.endAt || null, ix(p.d), ix(p.r), p.tIn, p.tZt, p.tEnd, p.cible ?? null,
       p.fail ? FAILS.findIndex(f => f.k === p.fail) + 1 : 0, ck.map(k => { const v = p.c[k]; return v === true ? 1 : v === false ? 0 : v ?? null; }),
-      p.cfg.total, p.cfg.zt]) };
+      p.cfg.total, p.cfg.zt, p.les === 'tg' ? 1 : 0, p.grp || 0, p.tx ? [p.tx.md, p.tx.mr, p.tx.sens, p.tx.rep, p.tx.mom] : null]) };
 }
 function mergeR(R) {
   if (!R || R.a !== APP || R.t !== 'R') throw new Error('Ce QR n\'est pas un envoi de résultats Zones Relais');
@@ -456,7 +477,7 @@ function mergeR(R) {
     if (ks.has(id)) { dup++; return; }
     const s = sid(i); c.sprints.push({ id, sid: s, snap: snap(c, s), t, ts, endAt, tablet: R.tab, local: false }); ns++;
   });
-  R.p.forEach(([id, ts, endAt, di, ri, tIn, tZt, tEnd, cible, fc, cs, total, zt]) => {
+  R.p.forEach(([id, ts, endAt, di, ri, tIn, tZt, tEnd, cible, fc, cs, total, zt, les, grp, tx]) => {
     if (kp.has(id)) { dup++; return; }
     const d = sid(di), r = sid(ri), cm = {};
     const crK = Object.fromEntries(crits(c).map(x => [x.k, x]));
@@ -466,7 +487,8 @@ function mergeR(R) {
       cm[k] = !crK[k] || ctype(crK[k]) === 'yn' ? v === 1 : v;
     });
     c.passages.push(finalize({ id, ts, endAt, tablet: R.tab, local: false, d, r, dSnap: snap(c, d), rSnap: snap(c, r),
-      tIn, tZt, tEnd, cible, fail: fc ? FAILS[fc - 1].k : null, c: cm, cfg: { total, zt } }));
+      tIn, tZt, tEnd, cible, fail: fc ? FAILS[fc - 1].k : null, c: cm, cfg: { total, zt },
+      les: les ? 'tg' : null, grp: grp || null, tx: tx ? { md: tx[0], mr: tx[1], sens: tx[2], rep: tx[3], mom: tx[4] } : undefined }));
     np++;
   });
   save();
@@ -490,7 +512,7 @@ async function renderSend() {
   $('#send-qr').innerHTML = '';
   if (sendKind === 'S') {
     $('#tb-main').textContent = c.ng ? '📤 Envoyer les groupes' : '📤 Envoyer la séance';
-    $('#send-info').innerHTML = `<b>${c.ng ? `Étape 2 · ${c.ng} groupes` : 'Étape 1 · 50 m'}</b> — ${esc(c.name)} · ${c.students.length} élèves · ${S.settings.total} m, Zt ${S.settings.zt} m · ${crits(c).length} critères.
+    $('#send-info').innerHTML = `<b>${c.ng ? `Étape 2 · ${c.ng} groupes` : 'Étape 1 · 50 m'}</b> — ${esc(c.name)} · ${c.students.length} élèves · ${S.settings.total} m, Zt ${S.settings.zt} m · ${crits(c).length} critères${c.tgN ? ` · ${c.tgN} groupes de travail` : ''}.
       <div class="hint">Sur chaque tablette élève : <b>📷 Recevoir la séance</b>, puis laisser défiler les QR devant la caméra. La série tourne en boucle.</div>`;
   } else {
     const n = sendObj.s.length + sendObj.p.length;
@@ -610,14 +632,35 @@ function splitCSVLine(line, sepc) {
   }
   out.push(cur); return out;
 }
+// Colonnes repérées par leur titre (export Pronote : Nom, Prénom, …, Sexe en E) ;
+// sans ligne de titres : Nom en A, Prénom en B, et la colonne du sexe est trouvée d'après son contenu.
 function parseRows(rows) {
+  const clean = v => String(v ?? '').trim().replace(/\s+/g, ' ');
+  const head = (rows[0] || []).map(v => norm(v));
+  const hasHead = head.some(h => /^(nom|noms|nom de famille|élève|eleve|name)$/.test(h));
+  let cN = 0, cP = 1, cS = -1;
+  if (hasHead) {
+    const find = re => head.findIndex(h => re.test(h));
+    const n = find(/^(nom|noms|nom de famille|name)$/), pr = find(/^(prénom|prenom|prénoms|prenoms|first name)$/), sx = find(/^(sexe|genre|sex)$/);
+    if (n >= 0) cN = n; if (pr >= 0) cP = pr; cS = sx;
+  }
+  const body = hasHead ? rows.slice(1) : rows;
+  if (cS < 0) { // pas de titre « Sexe » : colonne où la plupart des valeurs sont F/G, Fille/Garçon, Féminin/Masculin
+    let best = -1, bestN = 0;
+    const width = Math.max(0, ...body.map(r => r.length));
+    for (let j = 0; j < width; j++) {
+      if (j === cN || j === cP) continue;
+      const vals = body.map(r => clean(r[j])).filter(Boolean);
+      const ok = vals.filter(v => /^(f|g|m|h|fille|garçon|garcon|féminin|feminin|masculin|femme|homme)$/i.test(v)).length;
+      if (vals.length && ok / vals.length > 0.8 && ok > bestN) { best = j; bestN = ok; }
+    }
+    cS = best;
+  }
   const out = [];
-  rows.forEach((r, idx) => {
-    const nom = String(r[0] ?? '').trim().replace(/\s+/g, ' ');
-    const prenom = String(r[1] ?? '').trim().replace(/\s+/g, ' ');
+  body.forEach(r => {
+    const nom = clean(r[cN]), prenom = clean(r[cP]);
     if (!nom) return;
-    if (idx === 0 && /^(nom|noms|élève|eleve|élèves|eleves|name|identit)/i.test(nom)) return;
-    out.push({ id: keyOf(nom, prenom), nom, prenom, sexe: parseSex(r[3]) || parseSex(r[2]) });
+    out.push({ id: keyOf(nom, prenom), nom, prenom, sexe: cS >= 0 ? parseSex(r[cS]) : '' });
   });
   return dedupe(out).sort(byFirst);
 }
@@ -861,6 +904,216 @@ function sprintStudents(c) {
 function relayStudents(c) {
   if (c.ng && c.myGroup != null && !isProf()) return c.students.filter(s => c.grp[s.id] === c.myGroup).sort(byFirst);
   return [...c.students].sort(byFirst);
+}
+
+/* =====================================================================
+   LEÇON TRAVAIL DE GROUPE : groupes de 3 ou 4, tous les binômes (chaque élève démarreur ET relayeur),
+   cible, indice de transmission, caractéristiques de la transmission notées à chaque passage
+   ===================================================================== */
+const TX = [
+  { k: 'md', l: 'Main du donneur', o: [['D', 'Droite'], ['G', 'Gauche']] },
+  { k: 'mr', l: 'Main du receveur', o: [['D', 'Droite'], ['G', 'Gauche']] },
+  { k: 'sens', l: 'Transmission', o: [['M', 'Montante'], ['D', 'Descendante']] },
+  { k: 'rep', l: 'Distance du repère de démarrage', unit: 'pieds' },
+  { k: 'mom', l: 'Moment de la transmission', o: [['D', 'Début de zone'], ['M', 'Milieu de zone'], ['F', 'Fin de zone']] }
+];
+const fpied = v => v == null ? '–' : String(v).replace('.', ',');
+const txVal = (t, v) => v == null ? '' : t.k === 'rep' ? v : (t.o.find(o => o[0] === v) || [, '?'])[1];
+const txText = x => x && x.md ? `${x.md === 'D' ? 'Droite' : 'Gauche'} → ${x.mr === 'D' ? 'droite' : 'gauche'} · ${x.sens === 'M' ? 'montante' : 'descendante'} · ${fpied(x.rep)} pieds · ${({ D: 'début', M: 'milieu', F: 'fin' })[x.mom] || '?'} de zone` : '—';
+const txSame = (a, b) => !!(a && b && a.md === b.md && a.mr === b.mr && a.sens === b.sens && a.mom === b.mom && Math.abs((a.rep ?? 0) - (b.rep ?? 0)) <= 0.5);
+function tgMembers(c, g) { return c.students.filter(s => c.tg[s.id] === g).sort(byFirst); }
+function tgPairs(c, g) { const m = tgMembers(c, g), out = []; m.forEach(a => m.forEach(b => { if (a.id !== b.id) out.push([a.id, b.id]); })); return out; }
+const pairPass = (c, d, r, list = c.passages) => list.filter(p => p.les === 'tg' && p.d === d && p.r === r);
+function lastTx(c, d, r) { const l = pairPass(c, d, r).filter(p => p.tx && p.tx.md).sort((a, b) => b.ts - a.ts)[0]; return l ? { ...l.tx } : null; }
+function txModal(list) { // caractéristiques les plus fréquentes et constance
+  const t = list.filter(p => p.tx && p.tx.md);
+  if (!t.length) return { tx: null, n: 0, same: 0 };
+  let best = t[0].tx, bn = 0;
+  t.forEach(p => { const n = t.filter(q => txSame(p.tx, q.tx)).length; if (n > bn) { bn = n; best = p.tx; } });
+  return { tx: best, n: t.length, same: bn };
+}
+function pairStats(c, d, r, list) {
+  const P = pairPass(c, d, r, list), ok = P.filter(p => !p.fail && p.tEnd != null);
+  const its = P.map(p => passIT(c, p)).filter(x => x != null), st = P.map(p => passStars(c, p)).filter(x => x != null);
+  const best = ok.length ? ok.reduce((a, p) => teqOf(p) < teqOf(a) ? p : a) : null;
+  return { P, n: P.length, best, bestIT: its.length ? Math.min(...its) : null, beat: P.filter(p => !p.fail && passStars(c, p) === 4).length,
+    bestStars: st.length ? Math.max(...st) : null, meanStars: st.length ? st.reduce((a, b) => a + b, 0) / st.length : null, mod: txModal(P) };
+}
+
+/* ---- prof : constitution des groupes par cliquer-glisser ---- */
+let tgDraft = {}, tgCount = 0, tgPick = null;
+function renderTgroupes() {
+  const c = cls();
+  tgDraft = { ...c.tg }; tgCount = c.tgN || Math.max(1, Math.ceil(c.students.length / 4)); tgPick = null;
+  paintTg();
+}
+function paintTg() {
+  const c = cls(), board = $('#tg-board');
+  const chip = s => {
+    const b = best50(c, s.id);
+    return `<div class="g-chip ${tgPick === s.id ? 'pick' : ''}" data-tchip="${esc(s.id)}">${sexBadge(s.sexe)} <b>${esc(dnStudent(c, s))}</b><span>${b != null ? fmt(b) + ' s' : '–'}</span></div>`;
+  };
+  board.innerHTML = Array.from({ length: tgCount + 1 }, (_, g) => g).map(g => {
+    const mem = c.students.filter(s => (tgDraft[s.id] || 0) === g).sort((a, b) => (level(c, b.id) ?? -1e9) - (level(c, a.id) ?? -1e9));
+    const bad = g && mem.length && (mem.length < 3 || mem.length > 4);
+    return `<div class="g-col ${g === 0 ? 'none' : ''} ${bad ? 'bad' : ''}" data-tcol="${g}">
+      <div class="g-head">${g ? `Groupe ${g}` : 'À placer'} <span>${mem.length} élève${mem.length > 1 ? 's' : ''}${g && mem.length ? ` · ${mem.length * (mem.length - 1)} binômes` : ''}${bad ? ' · ⚠ 3 ou 4 conseillés' : ''}</span>${tgPick ? '<em>⬇ déposer ici</em>' : ''}</div>
+      <div class="g-list">${mem.map(chip).join('') || '<span class="meta">Glissez des élèves ici</span>'}</div></div>`;
+  }).join('');
+  enableDrag(board);
+}
+function enableDrag(board) {
+  board.querySelectorAll('[data-tchip]').forEach(ch => ch.addEventListener('pointerdown', e => {
+    if (e.button > 0) return;
+    e.preventDefault();
+    const id = ch.dataset.tchip, r = ch.getBoundingClientRect(), ox = e.clientX - r.left, oy = e.clientY - r.top, sx = e.clientX, sy = e.clientY;
+    let ghost = null, moved = false;
+    const over = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.closest('[data-tcol]'); };
+    const mv = ev => {
+      if (!moved && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 8) {
+        moved = true; ghost = ch.cloneNode(true); ghost.classList.add('drag-ghost'); ghost.style.width = r.width + 'px'; document.body.appendChild(ghost);
+      }
+      if (!ghost) return;
+      ghost.style.left = (ev.clientX - ox) + 'px'; ghost.style.top = (ev.clientY - oy) + 'px';
+      ghost.style.visibility = 'hidden'; const col = over(ev.clientX, ev.clientY); ghost.style.visibility = '';
+      board.querySelectorAll('.g-col').forEach(cl => cl.classList.toggle('over', cl === col));
+    };
+    const up = ev => {
+      document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up);
+      if (ghost) ghost.remove();
+      if (!moved) { tgPick = tgPick === id ? null : id; paintTg(); return; }
+      const col = over(ev.clientX, ev.clientY);
+      if (col) tgDraft[id] = +col.dataset.tcol;
+      tgPick = null; paintTg();
+    };
+    document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
+  }));
+  board.querySelectorAll('[data-tcol] .g-head').forEach(hd => hd.onclick = () => {
+    if (!tgPick) return; tgDraft[tgPick] = +hd.closest('[data-tcol]').dataset.tcol; tgPick = null; paintTg();
+  });
+}
+function tgPropose(mode) {
+  const c = cls(), list = [...c.students].sort((a, b) => (level(c, b.id) ?? -1e9) - (level(c, a.id) ?? -1e9));
+  const k = Math.max(1, Math.ceil(list.length / 4)); tgCount = k; tgDraft = {};
+  if (mode === 'homo') {
+    const base = Math.floor(list.length / k), extra = list.length % k; let i = 0;
+    for (let g = 1; g <= k; g++) { const n = base + (g <= extra ? 1 : 0); for (let j = 0; j < n; j++) tgDraft[list[i++].id] = g; }
+  } else list.forEach((s, i) => { const r = Math.floor(i / k), j = i % k; tgDraft[s.id] = r % 2 ? k - j : j + 1; });
+  paintTg();
+}
+$('#tg-add').onclick = () => { tgCount++; paintTg(); };
+$('#tg-del').onclick = () => { if (tgCount <= 1) return; Object.keys(tgDraft).forEach(k => { if (tgDraft[k] === tgCount) tgDraft[k] = 0; }); tgCount--; paintTg(); };
+$('#tg-homo').onclick = () => tgPropose('homo');
+$('#tg-hetero').onclick = () => tgPropose('hetero');
+$('#tg-clear').onclick = () => { if (confirm('Retirer tous les élèves des groupes ?')) { tgDraft = {}; paintTg(); } };
+function saveTg() {
+  const c = cls(), sizes = {};
+  Object.values(tgDraft).forEach(g => { if (g) sizes[g] = (sizes[g] || 0) + 1; });
+  if (!Object.keys(sizes).length) { toast('Aucun élève dans les groupes'); return false; }
+  const bad = Object.entries(sizes).filter(([, n]) => n < 3 || n > 4).map(([g]) => g);
+  if (bad.length && !confirm(`Groupe(s) ${bad.join(', ')} : pas 3 ou 4 élèves. Valider quand même ?`)) return false;
+  // numéros de groupes sans trou
+  const used = [...new Set(Object.values(tgDraft).filter(Boolean))].sort((a, b) => a - b), ren = Object.fromEntries(used.map((g, i) => [g, i + 1]));
+  c.tg = {}; Object.entries(tgDraft).forEach(([k, g]) => { if (g) c.tg[k] = ren[g]; });
+  c.tgN = used.length; save(); toast(`${c.tgN} groupes de travail validés`); return true;
+}
+$('#tg-save').onclick = () => { if (saveTg()) show('menu'); };
+$('#tg-send').onclick = () => { if (saveTg()) { sendKind = 'S'; show('send'); } };
+
+/* ---- tablette : les binômes du groupe ---- */
+let tgProfG = 1;
+function renderTg() {
+  const c = cls();
+  if (!c.tgN) { $('#tg-head').innerHTML = `<div class="empty">${isProf() ? 'Constituez d\'abord les groupes de travail.' : 'En attente des groupes de travail du prof (📷 Recevoir la séance).'}</div>`; $('#tg-pairs').innerHTML = ''; $('#tg-gsel').innerHTML = ''; return; }
+  if (tgProfG > c.tgN) tgProfG = 1;
+  const g = isProf() ? tgProfG : c.myTg;
+  $('#tg-gsel').innerHTML = isProf() ? `<div class="seg small">${Array.from({ length: c.tgN }, (_, i) => i + 1).map(n => `<button data-tgg="${n}" class="${n === g ? 'on' : ''}">G${n}</button>`).join('')}</div>`
+    : `<button class="btn ghost small" data-go="eleve">Changer de groupe</button>`;
+  $$('[data-tgg]').forEach(b => b.onclick = () => { tgProfG = +b.dataset.tgg; renderTg(); });
+  const mem = tgMembers(c, g), pairs = tgPairs(c, g);
+  $('#tg-info').textContent = `· Groupe ${g} · ${mem.length} élèves · ${pairs.length} binômes`;
+  $('#tg-head').innerHTML = `<div class="tg-mem">${mem.map(s => { const b = best50(c, s.id);
+    return `<div class="tile mini"><span class="top"><span class="nom">${esc(dnStudent(c, s))}</span>${sexBadge(s.sexe)}</span>
+      <span class="perf">${b != null ? `50 m : <b>${fmt(b)} s</b>` : '<span class="flag">pas de 50 m</span>'}</span><span class="rec" data-sid="${esc(s.id)}"></span></div>`; }).join('')}</div>`;
+  // binôme conseillé : le moins de passages, puis les deux coureurs les plus reposés
+  const D = S.settings.total;
+  const info = pairs.map(([d, r]) => ({ d, r, st: pairStats(c, d, r), rest: Math.min(Date.now() - (lastEnd(c, d) || 0), Date.now() - (lastEnd(c, r) || 0)) }));
+  const next = [...info].sort((a, b) => a.st.n - b.st.n || b.rest - a.rest)[0];
+  $('#tg-pairs').innerHTML = info.map(x => {
+    const cb = cible100(c, x.d, x.r), st = x.st, last = lastTx(c, x.d, x.r);
+    const cons = st.mod.n >= 2 ? pct(st.mod.same, st.mod.n) : null;
+    return `<button class="pair-card ${x === next ? 'next' : ''}" data-d="${esc(x.d)}" data-r="${esc(x.r)}">
+      ${x === next ? '<span class="nx">▶ conseillé</span>' : ''}
+      <span class="pc-names"><span class="role d">D</span> ${esc(dn(c, x.d))} <span class="arrow">➜</span> <span class="role r">R</span> ${esc(dn(c, x.r))}</span>
+      <span class="pc-row"><span>🎯 ${cb != null ? fmt(cb * D / BASE) + ' s' : '–'}</span><span>${st.n} passage${st.n > 1 ? 's' : ''}</span>
+        ${st.best ? `<span>meilleur ${fmt(st.best.tEnd)} s</span>` : ''}</span>
+      <span class="pc-row">${st.bestStars != null ? starsHTML(st.bestStars) : '<span class="meta">pas encore couru</span>'}
+        ${st.bestIT != null ? `<span class="${st.bestIT <= 0 ? 'ok' : 'ko'}">IT ${fit(st.bestIT)}</span>` : ''}
+        ${st.n ? `<span>cible battue ${st.beat}/${st.n}</span>` : ''}</span>
+      <span class="pc-tx">${last ? '✋ ' + esc(txText(last)) : 'caractéristiques à définir au 1er passage'}${cons != null ? ` · <b class="${cons >= 75 ? 'ok' : cons >= 50 ? 'mid' : 'ko'}">constance ${cons} %</b>` : ''}</span>
+    </button>`;
+  }).join('') || '<div class="empty">Pas assez d\'élèves dans ce groupe.</div>';
+  $$('#tg-pairs .pair-card').forEach(b => b.onclick = () => {
+    const ids = [b.dataset.d, b.dataset.r];
+    const no50 = ids.filter(id => best50(c, id) == null);
+    if (no50.length && !confirm(`${no50.map(id => dn(c, id)).join(' et ')} n'a/ont pas de temps sur 50 m : pas de cible. Lancer quand même ?`)) return;
+    if (!recCheck(ids)) return;
+    startRun(ids[0], ids[1], { les: 'tg', grp: g });
+  });
+  updateRec();
+}
+
+/* ---- évaluation : caractéristiques de la transmission ---- */
+function renderTx(p) {
+  const box = $('#e-tx');
+  if (p.les !== 'tg') { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  p.tx = p.tx || {};
+  const prev = p.txPrev;
+  box.innerHTML = `<h3>Caractéristiques de la transmission ${prev ? '<span class="meta">· reprises du passage précédent du binôme : modifiez seulement ce qui a changé</span>' : '<span class="meta">· premier passage du binôme</span>'}</h3>` +
+    TX.map(t => {
+      const v = p.tx[t.k], changed = prev && v != null && (t.k === 'rep' ? Math.abs(v - (prev.rep ?? 0)) > 0.5 : v !== prev[t.k]);
+      const ctl = t.k === 'rep'
+        ? `<div class="rep-ctl"><button class="btn ghost" data-rep="-1">−1</button><button class="btn ghost" data-rep="-0.5">−½</button><b>${fpied(v)} <small>pieds</small></b><button class="btn ghost" data-rep="0.5">+½</button><button class="btn ghost" data-rep="1">+1</button></div>`
+        : `<div class="yn">${t.o.map(([val, l]) => `<button class="btn opt ${v === val ? 'chosen' : ''}" data-tx="${t.k}" data-val="${val}">${l}</button>`).join('')}</div>`;
+      return `<div class="tx-row ${v == null ? 'todo' : ''} ${changed ? 'changed' : ''}"><span class="tx-lbl">${t.l}${changed ? ' <em>⚠ modifié</em>' : ''}</span>${ctl}</div>`;
+    }).join('');
+  box.querySelectorAll('[data-tx]').forEach(b => b.onclick = () => { p.tx[b.dataset.tx] = b.dataset.val; save(); renderEval(); });
+  box.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => { p.tx.rep = p.tx.rep == null ? 15 : Math.max(0, Math.round((p.tx.rep + +b.dataset.rep) * 2) / 2); save(); renderEval(); });
+}
+
+/* ---- bilan du travail de groupe ---- */
+function renderTgBilan(c, list) {
+  const T = list.filter(p => p.les === 'tg'), el = $('#b-tg');
+  if (!T.length) { el.innerHTML = ''; return; }
+  const groups = [...new Set([...T.map(p => p.grp || c.tg[p.d] || 0)])].sort((a, b) => a - b);
+  el.innerHTML = `<h2>Travail de groupe <small>${T.length} passages</small></h2>` + groups.map(g => {
+    const P = T.filter(p => (p.grp || c.tg[p.d] || 0) === g);
+    const pairs = [...new Set([...(c.tg && g ? tgPairs(c, g) : []).map(x => x.join('>')), ...P.map(p => p.d + '>' + p.r)])].map(k => k.split('>'));
+    const its = P.map(p => passIT(c, p)).filter(x => x != null), st = P.map(p => passStars(c, p)).filter(x => x != null);
+    const allMod = pairs.map(([d, r]) => txModal(pairPass(c, d, r, P))).filter(m => m.n >= 2);
+    const cons = allMod.length ? pct(allMod.reduce((a, m) => a + m.same, 0), allMod.reduce((a, m) => a + m.n, 0)) : null;
+    return `<div class="card tg-card"><div class="row between wrap"><h3 style="margin:0">Groupe ${g || '?'} <span class="meta">${tgMembers(c, g).map(s => esc(dnStudent(c, s))).join(' · ')}</span></h3>
+      <div class="tg-kpi"><span>🎯 cible battue <b>${P.filter(p => !p.fail && passStars(c, p) === 4).length}/${P.length}</b></span><span>★ moyennes <b>${st.length ? fnum(st.reduce((a, b) => a + b, 0) / st.length) : '–'}</b></span><span>✋ constance <b>${cons != null ? cons + ' %' : '–'}</b></span></div></div>
+      <div class="table-wrap flat"><table><tr><th style="text-align:left">Binôme</th><th>Passages</th><th>Cible</th><th>Meilleur temps</th><th>Meilleur IT</th><th>Étoiles<br><small>meilleure · moy.</small></th><th>Cible battue</th><th style="text-align:left">Caractéristiques habituelles</th><th>Constance</th></tr>
+      ${pairs.map(([d, r]) => { const s2 = pairStats(c, d, r, P), cb = cible100(c, d, r);
+        const k = s2.mod.n >= 2 ? pct(s2.mod.same, s2.mod.n) : null;
+        return `<tr class="${s2.n ? '' : 'none'}"><td class="name">${esc(dn(c, d))} ➜ ${esc(dn(c, r))}</td><td>${s2.n}</td>
+          <td>${cb != null ? fmt(cb * S.settings.total / BASE) + ' s' : '–'}</td><td>${s2.best ? fmt(s2.best.tEnd) + ' s' : '–'}</td>
+          <td>${s2.bestIT != null ? `<span class="chip ${s2.bestIT <= 0 ? 'hi' : s2.bestIT <= 0.5 ? 'mid' : 'lo'}">${fit(s2.bestIT)}</span>` : '–'}</td>
+          <td>${s2.bestStars != null ? `<span class="st">${'★'.repeat(s2.bestStars)}</span> · ${fnum(s2.meanStars)}` : '–'}</td>
+          <td>${s2.n ? `${s2.beat}/${s2.n}` : '–'}</td>
+          <td style="text-align:left;white-space:normal">${esc(txText(s2.mod.tx))}</td>
+          <td>${k != null ? `<span class="chip ${k >= 75 ? 'hi' : k >= 50 ? 'mid' : 'lo'}">${k} %</span>` : '–'}</td></tr>`; }).join('')}</table></div></div>`;
+  }).join('');
+}
+function tgPairRows(c, list) {
+  const T = list.filter(p => p.les === 'tg'); const rows = [['Groupe', 'Binôme (démarreur ➜ relayeur)', 'Passages', 'Cible (s)', 'Meilleur temps (s)', 'Meilleur IT (s)', 'Meilleures étoiles', 'Étoiles moyennes', 'Cible battue', 'Caractéristiques habituelles', 'Constance (%)']];
+  const keys = [...new Set(T.map(p => (p.grp || 0) + '§' + p.d + '>' + p.r))].sort();
+  keys.forEach(k => { const [g, pr] = k.split('§'), [d, r] = pr.split('>'), s2 = pairStats(c, d, r, T.filter(p => String(p.grp || 0) === g)), cb = cible100(c, d, r);
+    rows.push([+g || '', `${dn(c, d)} ➜ ${dn(c, r)}`, s2.n, cb != null ? +(cb * S.settings.total / BASE / 1000).toFixed(2) : '', s2.best ? +(s2.best.tEnd / 1000).toFixed(2) : '',
+      s2.bestIT ?? '', s2.bestStars ?? '', s2.meanStars != null ? +s2.meanStars.toFixed(1) : '', `${s2.beat}/${s2.n}`, txText(s2.mod.tx), s2.mod.n >= 2 ? pct(s2.mod.same, s2.mod.n) : '']); });
+  return rows;
 }
 
 /* =====================================================================
@@ -1168,7 +1421,7 @@ function renderVideoBox(p) {
 }
 
 let run = null, raf = null, wake = null;
-function startRun(d, r) { run = { d, r, t0: null, marks: [] }; sel = { d: null, r: null }; show('chrono'); requestWake(); }
+function startRun(d, r, opt = {}) { run = { d, r, t0: null, marks: [], les: opt.les || null, grp: opt.grp || null }; sel = { d: null, r: null }; show('chrono'); requestWake(); }
 function paintPair() {
   const c = cls();
   $('#c-d').textContent = dn(c, run.d); $('#c-r').textContent = dn(c, run.r);
@@ -1182,6 +1435,7 @@ function step() { return run.t0 === null ? 0 : run.marks.length + 1; }
 function renderChrono() {
   if (!run) { show('tiles'); return; }
   paintPair();
+  if (run.les === 'tg') { $('#tb-main').textContent = '③ Travail de groupe'; $('#tb-sub').textContent = `Groupe ${run.grp} · chronomètre`; }
   $('#c-cam').classList.toggle('hidden', !S.settings.video);
   if (S.settings.video) vidStart();
   const st = step();
@@ -1218,7 +1472,8 @@ $('#c-undo').onclick = () => {
 $('#c-reset').onclick = () => { if (!run) return; run.t0 = null; run.marks = []; cancelAnimationFrame(raf); vidDiscard(); renderChrono(); };
 $('#c-cancel').onclick = () => {
   if (run && run.t0 !== null && !confirm('Revenir aux élèves sans enregistrer ? (si le passage a échoué, utilisez « Passage raté »)')) return;
-  run = null; stopClock(); vidDiscard(); show('tiles');
+  const back = run && run.les === 'tg' ? 'tg' : 'tiles';
+  run = null; stopClock(); vidDiscard(); show(back);
 };
 async function requestWake() { try { if ('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
 function releaseWake() { try { wake && wake.release(); } catch (e) {} wake = null; }
@@ -1233,7 +1488,8 @@ function toEval(failed) {
     id: uid(), ts: Date.now(), endAt: run.endAt || Date.now(), tablet: S.settings.tablet, local: true,
     d: run.d, r: run.r, dSnap: snap(c, run.d), rSnap: snap(c, run.r),
     tIn: tIn != null ? Math.round(tIn) : null, tZt: sp2 ? Math.round(sp2.tZt) : null, tEnd: !failed && tEnd != null ? Math.round(tEnd) : null,
-    cible: cible100(c, run.d, run.r), fail: failed ? '' : null, c: {}, cfg: { total, zt }
+    cible: cible100(c, run.d, run.r), fail: failed ? '' : null, c: {}, cfg: { total, zt },
+    ...(run.les === 'tg' ? { les: 'tg', grp: run.grp, tx: lastTx(c, run.d, run.r) || {}, txPrev: lastTx(c, run.d, run.r) } : {})
   });
   vidFinish(S.pending.id, run, failed);
   save(); run = null; show('eval');
@@ -1261,6 +1517,7 @@ function renderEval() {
     </div>
     <div class="verdict ${gapCls(p.gap)}">Écart : ${fgap(p.gap)} ${p.gap > 0 ? '(plus rapide dans la zone)' : '(plus lent dans la zone)'}</div>`
     : `<h3>Écart de vitesse dans la Zt</h3><p class="hint">Non calculable (chronométrage incomplet).</p>`;
+  renderTx(p);
   $('#e-fail').classList.toggle('hidden', p.fail === null);
   $('#fail-btns').innerHTML = FAILS.map(f => `<button class="btn no ${p.fail === f.k ? 'chosen' : ''}" data-fail="${f.k}">${f.label}</button>`).join('');
   $$('#fail-btns .btn').forEach(b => b.onclick = () => { p.fail = b.dataset.fail; save(); renderEval(); });
@@ -1296,11 +1553,12 @@ function critHTML(c, p, compact) {
 function missing(p) {
   const m = crits(cls()).filter(cr => p.c[cr.k] === undefined).map(cr => cr.k);
   if (p.fail === '') m.unshift('fail');
+  if (p.les === 'tg') TX.forEach(t => { if (!p.tx || p.tx[t.k] == null) m.push('tx'); });
   return m;
 }
 function flashMissing() {
   if (view !== 'eval') return;
-  $$('#e-crits .crit.todo, #v-crit .v-row.todo, #e-fail').forEach(el => { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); });
+  $$('#e-crits .crit.todo, #v-crit .v-row.todo, #e-tx .tx-row.todo, #e-fail').forEach(el => { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); });
   const first = $('#e-crits .crit.todo'); if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 const gapCls = g => GAP_BINS.find(b => b.test(g)).cls;
@@ -1308,13 +1566,14 @@ $('#e-save').onclick = () => {
   const p = S.pending; if (!p) return;
   if (missing(p).length) { toast('Renseignez tous les critères'); flashMissing(); return; }
   cls().passages.push(p); S.pending = null; save(); vidClear();
+  delete p.txPrev;
   toast(p.fail ? 'Passage raté enregistré (1 ★)' : `Passage enregistré${p.stars ? ' · ' + '★'.repeat(p.stars) : ''}`);
-  show('tiles');
+  show(p.les === 'tg' ? 'tg' : 'tiles');
 };
 $('#e-redo').onclick = () => {
   const p = S.pending; if (!p) return;
   if (!confirm('Erreur de chronométrage ? Ce passage sera effacé et le chrono relancé pour le même binôme.')) return;
-  S.pending = null; save(); vidClear(); startRun(p.d, p.r);
+  S.pending = null; save(); vidClear(); startRun(p.d, p.r, { les: p.les, grp: p.grp });
 };
 
 /* =====================================================================
@@ -1323,7 +1582,8 @@ $('#e-redo').onclick = () => {
 function filtered(c) {
   const d = $('#b-date').value || 'all', t = $('#b-tab').value || 'all';
   const ok = x => (d === 'all' || dayOf(x.ts) === d) && (t === 'all' || (x.tablet || '') === t);
-  return { rel: c.passages.filter(ok), spr: c.sprints.filter(ok) };
+  const L = $('#b-les').value || 'all';
+  return { rel: c.passages.filter(p => ok(p) && (L === 'all' || (p.les || 'rel') === L)), spr: c.sprints.filter(ok) };
 }
 function fillFilters(c) {
   const all = [...c.passages, ...c.sprints];
@@ -1335,7 +1595,7 @@ function fillFilters(c) {
   if ([...$('#b-date').options].some(o => o.value === keepD)) $('#b-date').value = keepD;
   if ([...$('#b-tab').options].some(o => o.value === keepT)) $('#b-tab').value = keepT;
 }
-$('#b-date').onchange = $('#b-tab').onchange = () => renderBilan(true);
+$('#b-date').onchange = $('#b-tab').onchange = $('#b-les').onchange = () => renderBilan(true);
 function critStats(c, list) {
   return crits(c).map(cr => {
     const t = ctype(cr), vals = list.map(p => p.c && p.c[cr.k]).filter(v => v !== undefined && v !== null);
@@ -1429,6 +1689,7 @@ function renderBilan(keepFilters) {
       <div class="bar-val"><b>${b.n}</b><small>${pct(b.n, st.gaps.length)} %</small></div></div>`).join('') +
     `<p class="hint">Écart moyen : <b>${fgap(st.mean)}</b>. Écart = (V Zt − V hors Zt) ÷ V hors Zt.</p>`
     : '<div class="empty">Aucun passage chronométré complet.</div>';
+  renderTgBilan(c, list);
   $('#b-table').innerHTML = `
     <tr><th style="text-align:left">Élève</th><th>Relais<br><small>D / R</small></th><th>Écart Zt<br>moyen</th><th>IT moyen</th>
       ${crits(c).map(cr => `<th class="crit-h">${esc(cr.l)}</th>`).join('')}</tr>
@@ -1492,12 +1753,14 @@ $('#exp-xlsx').onclick = () => {
       r.rate != null ? pct(r.rate, 1) : '', r.et ? r.et.note : '', r.et && r.et.manual ? 'oui' : '',
       r.total != null ? Math.round(r.total * 100) / 100 : '', r.complete ? 'oui' : 'non']));
   const rel = [['Date', 'Tablette', 'Démarreur – Nom', 'Démarreur – Prénom', 'Relayeur – Nom', 'Relayeur – Prénom', 'Distance (m)', 'Statut', 'Cause',
-    'Temps (s)', 'Cible (s)', 'IT équiv. 100 m (s)', 'Étoiles', 'Entrée Zt (s)', 'Temps Zt (s)', 'V Zt (m/s)', 'V hors Zt (m/s)', 'Écart Zt (%)', ...crits(c).map(cr => cr.l)]]
+    'Temps (s)', 'Cible (s)', 'IT équiv. 100 m (s)', 'Étoiles', 'Entrée Zt (s)', 'Temps Zt (s)', 'V Zt (m/s)', 'V hors Zt (m/s)', 'Écart Zt (%)', ...crits(c).map(cr => cr.l),
+    'Leçon', 'Groupe de travail', ...TX.map(t => t.l + (t.unit ? ` (${t.unit})` : ''))]]
     .concat([...F.rel].sort((a, b) => a.ts - b.ts).map(p => [
       new Date(p.ts).toLocaleString('fr-FR'), p.tablet || '', ...nm(p.d, p.dSnap), ...nm(p.r, p.rSnap), distOf(p),
       p.fail ? 'Raté' : 'Réussi', p.fail ? (FAILS.find(f => f.k === p.fail) || {}).label : '',
       sec(p.tEnd), sec(p.tgt), passIT(c, p) ?? '', passStars(c, p) ?? '', sec(p.tIn), sec(p.tZt), p.vZt ?? '', p.vR ?? '', p.gap ?? '',
-      ...crits(c).map(cr => critText(cr, p.c[cr.k]))]));
+      ...crits(c).map(cr => critText(cr, p.c[cr.k])),
+      p.les === 'tg' ? 'Travail de groupe' : 'Relais à deux', p.grp || '', ...TX.map(t => p.tx ? txVal(t, p.tx[t.k]) : '')]));
   const s50 = [['Date', 'Tablette', 'Nom', 'Prénom', 'Temps 50 m (s)']]
     .concat([...F.spr].sort((a, b) => a.ts - b.ts).map(s => [new Date(s.ts).toLocaleString('fr-FR'), s.tablet || '', ...nm(s.sid, s.snap), sec(s.t)]));
   const bil = [['Bilan de classe', c.name], ['Relais', st.N], ['Ratés', st.nFail], ...st.failBy.map(f => ['  ' + f.label, f.n]),
@@ -1510,6 +1773,8 @@ $('#exp-xlsx').onclick = () => {
   add(bil, 'Bilan critères', i => i === 0 ? 48 : 12);
   add(rel, 'Relais', i => i < 6 ? 18 : i < 18 ? 12 : 26);
   add(s50, '50 m', i => i < 4 ? 18 : 14);
+  const tgRows = tgPairRows(c, F.rel);
+  if (tgRows.length > 1) add(tgRows, 'Travail de groupe', i => i < 2 ? 22 : 14);
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   deliver(new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `ZonesRelais_bilan_${safeName(c.name)}.xlsx`);
 };
