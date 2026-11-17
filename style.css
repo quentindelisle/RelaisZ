@@ -465,3 +465,9 @@ h2 small{font-weight:500}
 .tile.check.ap.absent .nom{text-decoration:line-through;color:#9f1239}
 .tile.check.ap.absent .nom small{color:var(--ko);text-decoration:none}
 .g-chip.abs{opacity:.45;text-decoration:line-through}
+
+/* v4.6 : sélection multiple */
+.sel-info{margin-top:6px;color:var(--navy);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.drag-ghost{position:fixed}
+.drag-n{position:absolute;top:-10px;right:-10px;background:var(--orange);color:#fff;font-weight:900;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:.85rem}
+.g-chip.pick{box-shadow:0 0 0 3px var(--orange)}

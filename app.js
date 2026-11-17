@@ -108,6 +108,7 @@ function migrate(d) {
     c.grp = c.grp || {}; c.ng = c.ng || 0; c.b50ext = c.b50ext || {}; c.deleted = c.deleted || [];
     if (c.myGroup === undefined) c.myGroup = null;
     c.tg = c.tg || {}; c.tgN = c.tgN || 0;
+    if (c.ng && !c.tgN) { c.tg = { ...c.grp }; c.tgN = c.ng; }   // v4.6 : un seul jeu de groupes
     c.myTg = Array.isArray(c.myTg) ? c.myTg : c.myTg != null ? [c.myTg] : [];   // une tablette peut suivre plusieurs groupes
     c.students.forEach(s => { if (s.sexe === undefined) s.sexe = ''; });
   });
@@ -321,7 +322,8 @@ function openGo(g) {
   else if (g === 'send-r') { sendKind = 'R'; show('send'); }
   else if (g === 'recv-r') { recvKind = 'R'; show('recv'); }
   else if (g === 'recv-s') { recvKind = 'S'; show('recv'); }
-  else if (g === 'tiles') { const c = cls(); if (c && !isProf() && c.ng && c.myGroup == null) { show('eleve'); toast('Choisissez d\'abord votre groupe'); } else show('tiles'); }
+  else if (g === 'tiles') { const c = cls(); if (c && !isProf() && c.tgN && !c.myTg.length) { show('eleve'); toast('Cochez d\'abord vos groupes'); } else show('tiles'); }
+  else if (g === 'groupes') show('tgroupes');
   else if (g === 'tg') { const c = cls(); if (c && !isProf() && !c.myTg.length) { show('eleve'); toast('Choisissez d\'abord votre groupe de travail'); } else show('tg'); }
   else if (g === 'bilan-tg') { $('#b-les').value = 'tg'; show('bilan'); setTimeout(() => { const e = $('#b-tg'); if (e) e.scrollIntoView({ behavior: 'smooth' }); }, 200); }
   else show(g);
@@ -360,7 +362,7 @@ function renderMenu() {
   if (!c) { $('#menu-steps').innerHTML = ''; return; }
   const n50 = c.students.filter(s => best50(c, s.id) != null).length;
   const nRel = c.passages.length, tabs = new Set([...c.sprints, ...c.passages].filter(x => !x.local).map(x => x.tablet || '?')).size;
-  const nGrp = c.ng ? Object.keys(c.grp).length : 0;
+  const nGrp = c.tgN ? Object.keys(c.tg).length : 0;
   const step = (n, title, desc, btns, done) => `<div class="step ${done ? 'done' : ''}"><div class="step-n">${n}</div>
     <div class="step-body"><h3>${title}</h3><p class="meta">${desc}</p><div class="step-btns">${btns}</div></div></div>`;
   $('#menu-steps').innerHTML =
@@ -369,16 +371,14 @@ function renderMenu() {
     step('1', '50 m départ arrêté · tablettes élèves', `Envoyez la séance aux tablettes, les élèves chronomètrent leurs 50 m, puis récupérez les QR. <b>${n50}/${c.students.length}</b> élèves chronométrés${tabs ? ` · ${tabs} tablette(s) reçue(s)` : ''}.`,
       `<button class="tile-btn blue" data-go="send-s"><span>📤</span>Envoyer la séance</button>
        <button class="tile-btn" data-go="recv-r"><span>📥</span>Récupérer les 50 m</button>`, n50 > 0) +
-    step('2', 'Faire les groupes', c.ng ? `<b>${c.ng} groupes</b> validés (${nGrp} élèves). Envoyez-les : chaque tablette choisit son groupe.` : 'Groupes construits d\'après les 50 m (homogènes, hétérogènes ou aléatoires, mixité F/G).',
-      `<button class="tile-btn" data-go="groupes"><span>👥</span>Faire les groupes</button>
-       <button class="tile-btn blue" data-go="send-s" ${c.ng ? '' : 'disabled'}><span>📤</span>Envoyer les groupes</button>`, c.ng > 0) +
+    step('2', 'Faire les groupes', c.tgN ? `<b>${c.tgN} groupes</b> validés (${nGrp} élèves). Les mêmes groupes servent au relais à deux et au travail de groupe. Envoyez-les : chaque tablette coche le ou les groupes qu'elle suit.` : 'Groupes par cliquer-glisser, ou proposés d\'après les 50 m (niveaux proches, mélangés ou aléatoires, mixité F/G). Ils servent au relais à deux et au travail de groupe.',
+      `<button class="tile-btn" data-go="tgroupes"><span>👥</span>Faire les groupes</button>
+       <button class="tile-btn blue" data-go="send-s" ${c.tgN ? '' : 'disabled'}><span>📤</span>Envoyer les groupes</button>`, c.tgN > 0) +
     step('3', 'Relais à deux · tablettes élèves', `Cible, indice technique, Zt chronométrée et critères. <b>${nRel}</b> relais reçus.`,
       `<button class="tile-btn" data-go="recv-r"><span>📥</span>Récupérer les relais</button>
        <button class="tile-btn orange" data-go="bilan"><span>📊</span>Bilan chiffré</button>`, nRel > 0) +
-    step('4', 'Leçon Travail de groupe', c.tgN ? `<b>${c.tgN} groupes</b> de travail (${Object.keys(c.tg).length} élèves) · <b>${c.passages.filter(p => p.les === 'tg').length}</b> passages reçus. Tous les binômes de chaque groupe, chaque élève démarreur ET relayeur ; caractéristiques de la transmission notées à chaque passage.` : 'Groupes de 3 ou 4 constitués par cliquer-glisser ; chaque binôme vise la cible, le maximum d\'étoiles et des caractéristiques de transmission stables.',
-      `<button class="tile-btn" data-go="tgroupes"><span>🧩</span>Constituer les groupes</button>
-       <button class="tile-btn blue" data-go="send-s" ${c.tgN ? '' : 'disabled'}><span>📤</span>Envoyer les groupes</button>
-       <button class="tile-btn" data-go="recv-r"><span>📥</span>Récupérer</button>
+    step('4', 'Leçon Travail de groupe', `Mêmes groupes que l'étape 2. Les binômes du groupe sont proposés, les élèves choisissent ceux qu'ils courent ; caractéristiques de la transmission notées à chaque passage. <b>${c.passages.filter(p => p.les === 'tg').length}</b> passages reçus.`,
+      `<button class="tile-btn" data-go="recv-r"><span>📥</span>Récupérer</button>
        <button class="tile-btn orange" data-go="bilan-tg"><span>📊</span>Bilan du travail de groupe</button>`, c.passages.some(p => p.les === 'tg')) +
     `<div class="step local"><div class="step-n">⏱</div><div class="step-body"><h3>Chronométrer sur cette tablette</h3>
       <div class="step-btns"><button class="tile-btn" data-go="sprint"><span>①</span>50 m</button><button class="tile-btn" data-go="tiles"><span>②</span>Relais</button><button class="tile-btn" data-go="tg"><span>③</span>Travail de groupe</button></div></div></div>`;
@@ -400,30 +400,22 @@ function renderEleve() {
   }
   const mine = [...c.sprints, ...c.passages].filter(x => x.local);
   const unsent = mine.filter(x => !c.sentAt || x.ts > c.sentAt).length;
-  const groups = c.ng ? Array.from({ length: c.ng }, (_, i) => i + 1) : [];
   $('#el-body').innerHTML = `
     <div class="home-grid">
-      <button class="home-btn" data-go="recv-s"><span class="ico">📷</span>Recevoir la séance<small>${c.ng ? 'groupes reçus' : 'liste et paramètres reçus'} · rescanner si besoin</small></button>
+      <button class="home-btn" data-go="recv-s"><span class="ico">📷</span>Recevoir la séance<small>${c.tgN ? 'groupes reçus' : 'liste et paramètres reçus'} · rescanner si besoin</small></button>
       <button class="home-btn p1" data-go="sprint"><span class="ico">①</span>50 m départ arrêté<small>${c.sprints.filter(s => s.local).length} chrono(s) sur cette tablette</small></button>
-      <button class="home-btn p2" data-go="tiles" ${c.ng && c.myGroup != null ? '' : 'disabled'}><span class="ico">②</span>Relais à deux<small>${c.ng ? (c.myGroup != null ? `Groupe ${c.myGroup}` : 'choisissez votre groupe ci-dessous') : 'en attente des groupes du prof'}</small></button>
+      <button class="home-btn p2" data-go="tiles" ${c.tgN && c.myTg.length ? '' : 'disabled'}><span class="ico">②</span>Relais à deux<small>${c.tgN ? (c.myTg.length ? `Groupe${c.myTg.length > 1 ? 's' : ''} ${c.myTg.join(', ')}` : 'cochez vos groupes ci-dessous') : 'en attente des groupes du prof'}</small></button>
       <button class="home-btn p3" data-go="tg" ${c.tgN && c.myTg.length ? '' : 'disabled'}><span class="ico">③</span>Travail de groupe<small>${c.tgN ? (c.myTg.length ? `Groupe${c.myTg.length > 1 ? 's' : ''} ${c.myTg.join(', ')}` : 'cochez vos groupes ci-dessous') : 'en attente des groupes du prof'}</small></button>
       <button class="home-btn send ${unsent ? 'todo' : ''}" data-go="send-r"><span class="ico">📤</span>Envoyer mes résultats<small>${unsent ? unsent + ' nouveau(x) résultat(s) à envoyer' : 'tout a été envoyé'}</small></button>
     </div>
-    ${groups.length ? `<h2>Choisir mon groupe pour le relais</h2><div class="grp-pick">${groups.map(g => {
-      const mem = c.students.filter(s => c.grp[s.id] === g).sort(byFirst);
-      return `<button class="grp-btn ${c.myGroup === g ? 'on' : ''}" data-mygrp="${g}"><b>Groupe ${g}</b><span>${mem.map(s => esc(dnStudent(c, s))).join(' · ') || '—'}</span></button>`;
-    }).join('')}</div>` : ''}
-    ${c.tgN ? `<h2>Groupes de travail suivis par cette tablette <small>touchez pour cocher / décocher (un ou plusieurs)</small></h2><div class="grp-pick">${Array.from({ length: c.tgN }, (_, i) => i + 1).map(g => {
+    ${c.tgN ? `<h2>Groupes suivis par cette tablette <small>touchez pour cocher / décocher (un ou plusieurs)</small></h2><div class="grp-pick">${Array.from({ length: c.tgN }, (_, i) => i + 1).map(g => {
       const mem = tgMembers(c, g);
       return `<button class="grp-btn tgb ${c.myTg.includes(g) ? 'on' : ''}" data-mytg="${g}"><b>${c.myTg.includes(g) ? '☑' : '☐'} Groupe ${g}</b><span>${mem.map(s => esc(dnStudent(c, s))).join(' · ') || '—'}</span></button>`;
-    }).join('')}</div>${c.myTg.length ? `<div class="row center"><button class="btn primary big" data-go="tg">③ Commencer avec ${c.myTg.length > 1 ? 'les groupes ' : 'le groupe '}${c.myTg.join(', ')}</button></div>` : ''}` : ''}`;
+    }).join('')}</div>${c.myTg.length ? `<div class="row gap center"><button class="btn primary big" data-go="tiles">② Relais à deux</button><button class="btn primary big" data-go="tg">③ Travail de groupe</button></div>` : ''}` : ''}`;
   $$('[data-mytg]').forEach(b => b.onclick = () => {
     const g = +b.dataset.mytg;
     c.myTg = c.myTg.includes(g) ? c.myTg.filter(x => x !== g) : [...c.myTg, g].sort((a, b) => a - b);
     save(); renderEleve();
-  });
-  $$('[data-mygrp]').forEach(b => b.onclick = () => {
-    c.myGroup = +b.dataset.mygrp; sel = { d: null, r: null }; save(); toast(`Groupe ${c.myGroup} : ${c.students.filter(s => c.grp[s.id] === c.myGroup).length} élèves`); show('tiles');
   });
 }
 
@@ -433,9 +425,9 @@ function renderEleve() {
 function buildS(c) {
   return { a: APP, t: 'S', v: 4, ts: Date.now(), cid: c.id, cn: c.name, pin: S.pin,
     set: { total: S.settings.total, zt: S.settings.zt, rec: S.settings.rec },
-    crit: crits(c).map(x => [x.k, x.l, ctype(x), x.o || [], x.ord ? 1 : 0]), ng: c.ng || 0,
+    crit: crits(c).map(x => [x.k, x.l, ctype(x), x.o || [], x.ord ? 1 : 0]), ng: 0,
     tgN: c.tgN || 0, abs: { day: today(), ids: absIds(c).map(id => c.students.findIndex(s => s.id === id)).filter(i => i >= 0) },
-    st: c.students.map(s => [s.nom, s.prenom, s.sexe || '', best50(c, s.id), c.ng ? (c.grp[s.id] || 0) : 0, c.tgN ? (c.tg[s.id] || 0) : 0]) };
+    st: c.students.map(s => [s.nom, s.prenom, s.sexe || '', best50(c, s.id), 0, c.tgN ? (c.tg[s.id] || 0) : 0]) };
 }
 function applyS(p) {
   if (!p || p.a !== APP || p.t !== 'S') throw new Error('Ce QR n\'est pas une séance Zones Relais');
@@ -524,8 +516,8 @@ async function renderSend() {
   sendObj = sendKind === 'S' ? buildS(c) : buildR(c);
   $('#send-qr').innerHTML = '';
   if (sendKind === 'S') {
-    $('#tb-main').textContent = c.ng ? '📤 Envoyer les groupes' : '📤 Envoyer la séance';
-    $('#send-info').innerHTML = `<b>${c.ng ? `Étape 2 · ${c.ng} groupes` : 'Étape 1 · 50 m'}</b> — ${esc(c.name)} · ${c.students.length} élèves · ${S.settings.total} m, Zt ${S.settings.zt} m · ${crits(c).length} critères${c.tgN ? ` · ${c.tgN} groupes de travail` : ''}.
+    $('#tb-main').textContent = c.tgN ? '📤 Envoyer les groupes' : '📤 Envoyer la séance';
+    $('#send-info').innerHTML = `<b>${c.tgN ? `${c.tgN} groupes` : 'Étape 1 · 50 m'}</b> — ${esc(c.name)} · ${c.students.length} élèves · ${S.settings.total} m, Zt ${S.settings.zt} m · ${crits(c).length} critères${c.tgN ? ` · groupes inclus` : ''}.
       <div class="hint">Sur chaque tablette élève : <b>📷 Recevoir la séance</b>, puis laisser défiler les QR devant la caméra. La série tourne en boucle.</div>`;
   } else {
     const n = sendObj.s.length + sendObj.p.length;
@@ -559,7 +551,7 @@ function renderRecv() {
 function handlePacket(p) {
   if (recvKind === 'S') {
     const c = applyS(p);
-    toast(`Séance reçue : ${c.name} · ${c.students.length} élèves${c.ng ? ` · ${c.ng} groupes` : ''}`, 3500);
+    toast(`Séance reçue : ${c.name} · ${c.students.length} élèves${c.tgN ? ` · ${c.tgN} groupes` : ''}`, 3500);
     setTimeout(() => show('eleve'), 300);
     return 'stop';
   }
@@ -682,7 +674,7 @@ function renderClasses() {
   if (!S.classes.length) { el.innerHTML = '<div class="empty">Aucune classe pour l\'instant.</div>'; return; }
   el.innerHTML = S.classes.map(c => `
     <div class="list-item ${c.id === S.cur ? 'current' : ''}">
-      <div class="grow"><b>${esc(c.name)}</b><div class="meta">${c.students.length} élèves · ${c.sprints.length} chronos 50 m · ${c.passages.length} relais${c.ng ? ` · ${c.ng} groupes` : ''}</div></div>
+      <div class="grow"><b>${esc(c.name)}</b><div class="meta">${c.students.length} élèves · ${c.sprints.length} chronos 50 m · ${c.passages.length} relais${c.tgN ? ` · ${c.tgN} groupes` : ''}</div></div>
       <button class="btn ${c.id === S.cur ? 'primary' : 'ghost'} small" data-open="${c.id}">${c.id === S.cur ? 'Ouverte' : 'Ouvrir'}</button>
       <button class="btn ghost small" data-ren="${c.id}">Renommer</button>
       <button class="btn danger-ghost small" data-del="${c.id}">Suppr.</button>
@@ -941,7 +933,7 @@ function sprintStudents(c) {
   return c.students.filter(s => (!g.size || g.has(s.id)) && !isAbs(c, s.id)).sort(byFirst);
 }
 function relayStudents(c) {
-  if (c.ng && c.myGroup != null && !isProf()) return c.students.filter(s => c.grp[s.id] === c.myGroup && !isAbs(c, s.id)).sort(byFirst);
+  if (c.tgN && c.myTg.length && !isProf()) return c.students.filter(s => c.myTg.includes(c.tg[s.id]) && !isAbs(c, s.id)).sort(byFirst);
   return c.students.filter(s => !isAbs(c, s.id)).sort(byFirst);
 }
 
@@ -980,37 +972,43 @@ function pairStats(c, d, r, list) {
 }
 
 /* ---- prof : constitution des groupes par cliquer-glisser ---- */
-let tgDraft = {}, tgCount = 0, tgPick = null;
+let tgDraft = {}, tgCount = 0, tgSel = new Set();
 function renderTgroupes() {
   const c = cls();
-  tgDraft = { ...c.tg }; tgCount = c.tgN || Math.max(1, Math.ceil(c.students.length / 4)); tgPick = null;
+  tgDraft = { ...c.tg }; tgCount = c.tgN || Math.max(1, Math.ceil(present(c).length / 4)); tgSel = new Set();
   paintTg();
 }
 function paintTg() {
   const c = cls(), board = $('#tg-board');
   const chip = s => {
     const b = best50(c, s.id);
-    return `<div class="g-chip ${tgPick === s.id ? 'pick' : ''} ${isAbs(c, s.id) ? 'abs' : ''}" data-tchip="${esc(s.id)}">${sexBadge(s.sexe)} <b>${esc(dnStudent(c, s))}</b><span>${b != null ? fmt(b) + ' s' : '–'}</span></div>`;
+    return `<div class="g-chip ${tgSel.has(s.id) ? 'pick' : ''} ${isAbs(c, s.id) ? 'abs' : ''}" data-tchip="${esc(s.id)}">${sexBadge(s.sexe)} <b>${esc(dnStudent(c, s))}</b><span>${b != null ? fmt(b) + ' s' : '–'}</span></div>`;
   };
   board.innerHTML = Array.from({ length: tgCount + 1 }, (_, g) => g).map(g => {
     const mem = c.students.filter(s => (tgDraft[s.id] || 0) === g).sort((a, b) => (level(c, b.id) ?? -1e9) - (level(c, a.id) ?? -1e9));
     const bad = g && mem.length && (mem.length < 3 || mem.length > 4);
     return `<div class="g-col ${g === 0 ? 'none' : ''} ${bad ? 'bad' : ''}" data-tcol="${g}">
-      <div class="g-head">${g ? `Groupe ${g}` : 'À placer'} <span>${mem.length} élève${mem.length > 1 ? 's' : ''}${g && mem.length ? ` · ${mem.length * (mem.length - 1)} binômes` : ''}${bad ? ' · ⚠ 3 ou 4 conseillés' : ''}</span>${tgPick ? '<em>⬇ déposer ici</em>' : ''}</div>
+      <div class="g-head">${g ? `Groupe ${g}` : 'À placer'} <span>${mem.length} élève${mem.length > 1 ? 's' : ''}${g && mem.length ? ` · ${mem.length * (mem.length - 1)} binômes possibles` : ''}${bad ? ' · ⚠ 3 ou 4 conseillés' : ''}</span>${tgSel.size ? `<em>⬇ déposer ${tgSel.size > 1 ? `les ${tgSel.size} élèves` : 'ici'}</em>` : ''}</div>
       <div class="g-list">${mem.map(chip).join('') || '<span class="meta">Glissez des élèves ici</span>'}</div></div>`;
   }).join('');
   enableDrag(board);
+  const rest = present(c).filter(s => !tgDraft[s.id]).length;
+  $('#tg-sel-info').innerHTML = tgSel.size ? `<b>${tgSel.size} élève${tgSel.size > 1 ? 's' : ''} sélectionné${tgSel.size > 1 ? 's' : ''}</b> : glissez-les ou touchez le titre d'un groupe · <button class="btn ghost small" id="tg-unsel">Désélectionner</button>` : '';
+  if ($('#tg-unsel')) $('#tg-unsel').onclick = () => { tgSel = new Set(); paintTg(); };
+  $('#tg-rest').disabled = !rest; $('#tg-rest').textContent = rest ? `🪄 Placer les ${rest} élève${rest > 1 ? 's' : ''} restant${rest > 1 ? 's' : ''}` : '🪄 Tous les élèves sont placés';
 }
 function enableDrag(board) {
   board.querySelectorAll('[data-tchip]').forEach(ch => ch.addEventListener('pointerdown', e => {
     if (e.button > 0) return;
     e.preventDefault();
-    const id = ch.dataset.tchip, r = ch.getBoundingClientRect(), ox = e.clientX - r.left, oy = e.clientY - r.top, sx = e.clientX, sy = e.clientY;
+    const id = ch.dataset.tchip, moving = tgSel.has(id) ? [...tgSel] : [id], r = ch.getBoundingClientRect(), ox = e.clientX - r.left, oy = e.clientY - r.top, sx = e.clientX, sy = e.clientY;
     let ghost = null, moved = false;
     const over = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.closest('[data-tcol]'); };
     const mv = ev => {
       if (!moved && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 8) {
-        moved = true; ghost = ch.cloneNode(true); ghost.classList.add('drag-ghost'); ghost.style.width = r.width + 'px'; document.body.appendChild(ghost);
+        moved = true; ghost = ch.cloneNode(true); ghost.classList.add('drag-ghost'); ghost.style.width = r.width + 'px';
+        if (moving.length > 1) { const n = document.createElement('span'); n.className = 'drag-n'; n.textContent = moving.length; ghost.appendChild(n); }
+        document.body.appendChild(ghost);
       }
       if (!ghost) return;
       ghost.style.left = (ev.clientX - ox) + 'px'; ghost.style.top = (ev.clientY - oy) + 'px';
@@ -1020,31 +1018,52 @@ function enableDrag(board) {
     const up = ev => {
       document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up);
       if (ghost) ghost.remove();
-      if (!moved) { tgPick = tgPick === id ? null : id; paintTg(); return; }
+      if (!moved) { tgSel.has(id) ? tgSel.delete(id) : tgSel.add(id); paintTg(); return; }   // toucher = sélectionner (plusieurs possibles)
       const col = over(ev.clientX, ev.clientY);
-      if (col) tgDraft[id] = +col.dataset.tcol;
-      tgPick = null; paintTg();
+      if (col) { moving.forEach(m => { tgDraft[m] = +col.dataset.tcol; }); tgSel = new Set(); }
+      paintTg();
     };
     document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
   }));
   board.querySelectorAll('[data-tcol] .g-head').forEach(hd => hd.onclick = () => {
-    if (!tgPick) return; tgDraft[tgPick] = +hd.closest('[data-tcol]').dataset.tcol; tgPick = null; paintTg();
+    if (!tgSel.size) return; const g = +hd.closest('[data-tcol]').dataset.tcol; tgSel.forEach(m => { tgDraft[m] = g; }); tgSel = new Set(); paintTg();
   });
 }
 function tgPropose(mode) {
-  const c = cls(), list = present(c).sort((a, b) => (level(c, b.id) ?? -1e9) - (level(c, a.id) ?? -1e9));
-  const k = Math.max(1, Math.ceil(list.length / 4)); tgCount = k; tgDraft = {};
+  const c = cls(), mix = $('#tg-mix').checked;
+  let list = present(c).sort((a, b) => (level(c, b.id) ?? -1e9) - (level(c, a.id) ?? -1e9));
+  if (mode === 'alea') list.sort(() => Math.random() - 0.5);
+  if (mix && mode !== 'homo') list = [...list.filter(s => s.sexe === 'F'), ...list.filter(s => s.sexe === 'G'), ...list.filter(s => !s.sexe)];
+  const k = Math.max(1, Math.ceil(list.length / 4)); tgCount = k; tgDraft = {}; tgSel = new Set();
   if (mode === 'homo') {
     const base = Math.floor(list.length / k), extra = list.length % k; let i = 0;
     for (let g = 1; g <= k; g++) { const n = base + (g <= extra ? 1 : 0); for (let j = 0; j < n; j++) tgDraft[list[i++].id] = g; }
-  } else list.forEach((s, i) => { const r = Math.floor(i / k), j = i % k; tgDraft[s.id] = r % 2 ? k - j : j + 1; });
+  } else list.forEach((s, i) => { const r = Math.floor(i / k), j = i % k; tgDraft[s.id] = mode === 'hetero' && r % 2 ? k - j : j + 1; });
   paintTg();
 }
+// Placer automatiquement les élèves restants : dans les groupes les moins remplis (4 au plus), sinon dans de nouveaux groupes
+function tgFillRest() {
+  const c = cls(), size = g => Object.entries(tgDraft).filter(([id, x]) => x === g && !isAbs(c, id)).length;
+  const rest = present(c).filter(s => !tgDraft[s.id]).sort((a, b) => (level(c, b.id) ?? -1e9) - (level(c, a.id) ?? -1e9));
+  if (!rest.length) return;
+  const need = Math.max(0, Math.ceil((rest.length - Array.from({ length: tgCount }, (_, i) => Math.max(0, 4 - size(i + 1))).reduce((a, b) => a + b, 0)) / 4));
+  tgCount += need;
+  rest.forEach(s => {
+    let best = null;
+    for (let g = 1; g <= tgCount; g++) { const n = size(g); if (n < 4 && (best === null || n < size(best))) best = g; }
+    if (best === null) { tgCount++; best = tgCount; }
+    tgDraft[s.id] = best;
+  });
+  tgSel = new Set(); paintTg();
+  toast(`${rest.length} élève(s) placé(s)`);
+}
+$('#tg-rest').onclick = tgFillRest;
+$('#tg-alea').onclick = () => tgPropose('alea');
 $('#tg-add').onclick = () => { tgCount++; paintTg(); };
 $('#tg-del').onclick = () => { if (tgCount <= 1) return; Object.keys(tgDraft).forEach(k => { if (tgDraft[k] === tgCount) tgDraft[k] = 0; }); tgCount--; paintTg(); };
 $('#tg-homo').onclick = () => tgPropose('homo');
 $('#tg-hetero').onclick = () => tgPropose('hetero');
-$('#tg-clear').onclick = () => { if (confirm('Retirer tous les élèves des groupes ?')) { tgDraft = {}; paintTg(); } };
+$('#tg-clear').onclick = () => { if (confirm('Retirer tous les élèves des groupes ?')) { tgDraft = {}; tgSel = new Set(); paintTg(); } };
 function saveTg() {
   const c = cls(), sizes = {};
   Object.values(tgDraft).forEach(g => { if (g) sizes[g] = (sizes[g] || 0) + 1; });
@@ -1070,12 +1089,12 @@ function renderTg() {
   if (!avail.includes(tgProfG)) tgProfG = avail[0];
   const g = tgProfG;
   $('#tg-gsel').innerHTML = (avail.length > 1 ? `<div class="seg tg-tabs">${avail.map(n => {
-      const done = tgPairs(c, n).filter(([d, r]) => pairPass(c, d, r).length).length, tot = tgPairs(c, n).length;
-      return `<button data-tgg="${n}" class="${n === g ? 'on' : ''}">Groupe ${n} <small>${done}/${tot}</small></button>`; }).join('')}</div>` : '')
+      const np = c.passages.filter(p => p.les === 'tg' && (p.grp || c.tg[p.d]) === n).length;
+      return `<button data-tgg="${n}" class="${n === g ? 'on' : ''}">Groupe ${n} <small>${np} passage${np > 1 ? 's' : ''}</small></button>`; }).join('')}</div>` : '')
     + (isProf() ? '' : `<button class="btn ghost small" data-go="eleve">Choisir les groupes</button>`);
   $$('[data-tgg]').forEach(b => b.onclick = () => { tgProfG = +b.dataset.tgg; renderTg(); });
   const mem = tgMembers(c, g), pairs = tgPairs(c, g);
-  $('#tg-info').textContent = `· Groupe ${g} · ${mem.length} élèves · ${pairs.length} binômes`;
+  $('#tg-info').textContent = `· Groupe ${g} · ${mem.length} élèves · ${pairs.length} binômes proposés`;
   $('#tg-head').innerHTML = `<div class="tg-mem">${mem.map(s => { const b = best50(c, s.id);
     return `<div class="tile mini"><span class="top"><span class="nom">${esc(dnStudent(c, s))}</span>${sexBadge(s.sexe)}</span>
       <span class="perf">${b != null ? `50 m : <b>${fmt(b)} s</b>` : '<span class="flag">pas de 50 m</span>'}</span><span class="rec" data-sid="${esc(s.id)}"></span></div>`; }).join('')}</div>`;
@@ -1302,8 +1321,8 @@ $('#sp-save').onclick = () => {
 let sel = { d: null, r: null };
 function renderTiles() {
   const c = cls(), el = $('#tiles'), list = relayStudents(c);
-  $('#group-info').innerHTML = c.ng && c.myGroup != null && !isProf() ? `· Groupe ${c.myGroup} · ${list.length} élèves` : `· ${list.length} élèves`;
-  $('#rel-group').classList.toggle('hidden', isProf() || !c.ng);
+  $('#group-info').innerHTML = c.tgN && c.myTg.length && !isProf() ? `· Groupe${c.myTg.length > 1 ? 's' : ''} ${c.myTg.join(', ')} · ${list.length} élèves` : `· ${list.length} élèves`;
+  $('#rel-group').classList.toggle('hidden', isProf() || !c.tgN);
   paintVidSet();
   el.innerHTML = list.length ? list.map(s => {
     const n = c.passages.filter(p => p.d === s.id || p.r === s.id).length, b = best50(c, s.id);
@@ -1697,7 +1716,7 @@ function renderBilan(keepFilters) {
       <th>Meilleur relais<br><small>(équiv. 100 m)</small></th><th>Vit. coll.<br><small>/3</small></th>
       <th>Courses</th><th>Étoiles<br><small>/16</small></th><th>Degré</th><th>Eff. tech.<br><small>/6</small></th><th class="tot">Total<br><small>/12</small></th></tr>
     ${R.map(r => `<tr class="${r.total == null ? 'none' : ''}">
-      <td class="name">${esc(dnStudent(c, r.s))}</td><td>${sexBadge(r.sexe)}</td><td>${c.grp[r.sid] || '–'}</td>
+      <td class="name">${esc(dnStudent(c, r.s))}</td><td>${sexBadge(r.sexe)}</td><td>${c.tg[r.sid] || '–'}</td>
       <td>${r.b50 != null ? fmt(r.b50) + ' s' : '–'}</td>
       <td class="pts">${r.ind != null ? fpt(r.ind) : (r.b50 != null && !r.sexe ? '<span class="flag">sexe ?</span>' : '–')}</td>
       <td>${r.bestRelReal != null ? fmt(r.bestRelReal) + ' s' + (Math.round(r.bestRel) !== r.bestRelReal ? `<span class="sub">${fmt(r.bestRel)} s</span>` : '') : '–'}</td>
@@ -1793,7 +1812,7 @@ $('#exp-xlsx').onclick = () => {
   const notes = [['Nom', 'Prénom', 'Sexe', 'Groupe', 'Meilleur 50 m (s)', 'Vitesse individuelle /3', 'Meilleur relais (s)', 'Relais équiv. 100 m (s)', 'Vitesse collective /3',
     'Courses', 'Ratées', 'Étoiles retenues', 'Total étoiles /16', 'Extrapolé', 'Degré', '% critères', 'Efficacité technique /6', 'Ajusté', 'TOTAL /12', 'Complet']]
     .concat([...R].sort((a, b) => (a.s.nom + a.s.prenom).localeCompare(b.s.nom + b.s.prenom, 'fr')).map(r => [
-      r.s.nom, r.s.prenom, r.sexe, c.grp[r.sid] || '', sec(r.b50), r.ind ?? '', sec(r.bestRelReal), sec(r.bestRel), r.col ?? '',
+      r.s.nom, r.s.prenom, r.sexe, c.tg[r.sid] || '', sec(r.b50), r.ind ?? '', sec(r.bestRelReal), sec(r.bestRel), r.col ?? '',
       r.mine.length, r.nFail, r.used.join('+'), r.stars ?? '', r.n && r.n < 4 ? `oui (${r.n} courses)` : '', r.et ? r.et.deg.n : '',
       r.rate != null ? pct(r.rate, 1) : '', r.et ? r.et.note : '', r.et && r.et.manual ? 'oui' : '',
       r.total != null ? Math.round(r.total * 100) / 100 : '', r.complete ? 'oui' : 'non']));

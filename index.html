@@ -147,11 +147,18 @@
         <b>Groupes de 3 ou 4 coureurs</b>
         <button id="tg-add" class="btn ghost small">+ Groupe</button>
         <button id="tg-del" class="btn ghost small">− Groupe</button>
-        <button id="tg-homo" class="btn ghost small">Proposer : niveaux proches</button>
-        <button id="tg-hetero" class="btn ghost small">Proposer : niveaux mélangés</button>
+        <button id="tg-rest" class="btn primary small">🪄 Placer les élèves restants</button>
         <button id="tg-clear" class="btn danger-ghost small">Tout retirer</button>
       </div>
-      <p class="hint">Faites glisser chaque élève dans un groupe (ou touchez l'élève puis le titre du groupe). Dans chaque groupe, tous les binômes possibles passent, chaque élève en démarreur ET en relayeur : 6 binômes à 3, 12 à 4.</p>
+      <div class="row gap wrap" style="margin-top:8px">
+        <b>Proposer d'après les 50 m :</b>
+        <button id="tg-homo" class="btn ghost small">Niveaux proches</button>
+        <button id="tg-hetero" class="btn ghost small">Niveaux mélangés</button>
+        <button id="tg-alea" class="btn ghost small">Aléatoire</button>
+        <label class="check"><input type="checkbox" id="tg-mix"> Mixité F/G</label>
+      </div>
+      <p class="hint">Touchez un ou plusieurs élèves pour les sélectionner, puis faites-les glisser ensemble dans un groupe (ou touchez le titre du groupe). « Placer les élèves restants » complète les groupes jusqu'à 4 et en crée si besoin. Ces groupes servent au relais à deux et au travail de groupe.</p>
+      <div id="tg-sel-info" class="sel-info"></div>
     </div>
     <div id="tg-board" class="gr-board tg-board"></div>
     <div class="row gap center">
@@ -175,6 +182,7 @@
         <li><b>Garder les mêmes caractéristiques</b> de transmission : main du donneur, main du receveur, montante / descendante, distance du repère, moment dans la zone.</li>
       </ol>
     </div>
+    <h2>Binômes proposés <small>choisissez ceux que vous courez : il n'est pas obligatoire de tous les faire</small></h2>
     <div id="tg-pairs" class="pairs"></div>
   </section>
 
@@ -342,7 +350,7 @@
     <div id="b-hist50" class="list"></div>
   </section>
 
-  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v4.5 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
+  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v4.6 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
 </main>
 
 <div id="toast" class="toast"></div>
