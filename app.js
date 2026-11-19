@@ -36,6 +36,9 @@ const B_COL = {
   F: [19.5, 19.0, 18.8, 18.4, 18.1, 17.9, 17.7, 17.5, 17.3, 16.9, 16.5, 16.2, 16.0, 15.8, 15.6, 15.4],
   G: [17.5, 17.0, 16.5, 16.2, 15.8, 15.6, 15.4, 15.0, 14.5, 14.3, 14.1, 13.8, 13.6, 13.4, 13.2, 13.0]
 };
+// Binôme mixte (une fille + un garçon) : barème moyen des barèmes filles et garçons
+B_COL.M = B_COL.F.map((f, i) => Math.round((f + B_COL.G[i]) / 2 * 100) / 100);
+const isMixed = (c, p) => { const a = (stu(c, p.d) || p.dSnap || {}).sexe, b = (stu(c, p.r) || p.rSnap || {}).sexe; return !!(a && b && a !== b); };
 const DEGREES = [
   { n: 1, min: 0, max: 6, lv: [0, 0.5, 1, 1.2] },
   { n: 2, min: 7, max: 10, lv: [1.4, 1.8, 2.4, 2.8] },
@@ -793,10 +796,11 @@ function renderBareme() {
   const tb = tbl => `<div class="btable"><table>
     <tr><th>Filles</th>${tbl.F.map((t, i) => `<td class="${rowCls(i)}">${fnum(t)}"</td>`).join('')}</tr>
     <tr><th>Garçons</th>${tbl.G.map((t, i) => `<td class="${rowCls(i)}">${fnum(t)}"</td>`).join('')}</tr>
+    ${tbl.M ? `<tr><th>Mixte</th>${tbl.M.map((t, i) => `<td class="${rowCls(i)}">${fnum(t, 2)}"</td>`).join('')}</tr>` : ''}
     <tr><th>Points</th>${PTS16.map((p, i) => `<td class="lv ${rowCls(i)}">${fpt(p)}</td>`).join('')}</tr></table></div>`;
   $('#bareme-box').innerHTML = `
     <h3>Vitesse individuelle /3 · meilleur 50 m départ arrêté</h3>${tb(B_IND)}
-    <h3>Vitesse collective /3 · meilleur relais (100 m)</h3>${tb(B_COL)}
+    <h3>Vitesse collective /3 · meilleur relais (100 m)</h3>${tb(B_COL)}<p class="hint" style="margin-top:-6px">Si le meilleur relais d'un élève a été couru avec un partenaire de l'autre sexe, il est lu dans le barème mixte (moyenne des barèmes filles et garçons).</p>
     <h3>Indice technique (par course)</h3>
     <p class="hint" style="margin-top:0">Cible = 50 m du démarreur + (50 m du relayeur − 0,3 s). IT = temps du relais − cible.</p>
     <ul class="bareme"><li>IT ≤ 0" : <b>4 ★</b></li><li>IT de 0,1" à 0,5" : <b>3 ★</b></li><li>IT de 0,6" à 1" : <b>2 ★</b></li><li>IT ≥ 1,1" (ou course ratée) : <b>1 ★</b></li></ul>
@@ -1681,9 +1685,10 @@ function result(c, sid, F) {
   const b50 = best50(c, sid, F.spr), ind = ptsFrom(B_IND, sexe, b50);
   const mine = F.rel.filter(p => p.d === sid || p.r === sid);
   const ok = mine.filter(p => !p.fail && p.tEnd != null);
-  const bestRel = ok.length ? Math.min(...ok.map(teqOf)) : null;
-  const bestRelReal = ok.length ? ok.reduce((a, p) => teqOf(p) < teqOf(a) ? p : a).tEnd : null;
-  const col = ptsFrom(B_COL, sexe, bestRel);
+  const bestP = ok.length ? ok.reduce((a, p) => teqOf(p) < teqOf(a) ? p : a) : null;
+  const bestRel = bestP ? teqOf(bestP) : null, bestRelReal = bestP ? bestP.tEnd : null;
+  const mixed = !!(bestP && isMixed(c, bestP));          // meilleur relais en binôme mixte → barème moyen F/G
+  const col = ptsFrom(B_COL, mixed ? 'M' : sexe, bestRel);
   const starsList = mine.map(p => passStars(c, p)).filter(x => x != null).sort((a, b) => b - a);
   const used = starsList.slice(0, 4), n = used.length, sum = used.reduce((a, b) => a + b, 0);
   const stars = n ? Math.min(16, Math.round(sum * 4 / n)) : null;
@@ -1693,7 +1698,7 @@ function result(c, sid, F) {
   const parts = [ind, col, et ? et.note : null];
   const total = parts.some(x => x != null) ? parts.reduce((a, x) => a + (x || 0), 0) : null;
   const its = mine.map(p => passIT(c, p)).filter(x => x != null);
-  return { sid, s, sexe, b50, ind, mine, bestRel, bestRelReal, col, used, n, sum, stars, rate, et, total,
+  return { sid, s, sexe, b50, ind, mine, bestRel, bestRelReal, col, mixed, used, n, sum, stars, rate, et, total,
     complete: parts.every(x => x != null) && n >= 2, nFail: mine.filter(p => p.fail).length,
     itMean: its.length ? its.reduce((a, b) => a + b, 0) / its.length : null };
 }
@@ -1720,7 +1725,7 @@ function renderBilan(keepFilters) {
       <td>${r.b50 != null ? fmt(r.b50) + ' s' : '–'}</td>
       <td class="pts">${r.ind != null ? fpt(r.ind) : (r.b50 != null && !r.sexe ? '<span class="flag">sexe ?</span>' : '–')}</td>
       <td>${r.bestRelReal != null ? fmt(r.bestRelReal) + ' s' + (Math.round(r.bestRel) !== r.bestRelReal ? `<span class="sub">${fmt(r.bestRel)} s</span>` : '') : '–'}</td>
-      <td class="pts">${r.col != null ? fpt(r.col) : (r.bestRel != null && !r.sexe ? '<span class="flag">sexe ?</span>' : '–')}</td>
+      <td class="pts">${r.col != null ? fpt(r.col) + (r.mixed ? '<span class="sub">barème mixte</span>' : '') : (r.bestRel != null && !r.sexe ? '<span class="flag">sexe ?</span>' : '–')}</td>
       <td>${r.mine.length}${r.nFail ? `<span class="sub">dont ${r.nFail} ratée(s)</span>` : ''}</td>
       <td>${r.stars != null ? `<span class="st">${r.stars} ★</span><span class="sub">${r.used.join('+')}${r.n < 4 ? ` → ×4/${r.n}` : ''}</span>${r.n === 1 ? '<span class="flag">1 seule course</span>' : r.n < 4 ? '<span class="flag">extrapolé</span>' : ''}` : '–'}</td>
       <td>${r.et ? r.et.deg.n : '–'}</td>
@@ -1809,10 +1814,10 @@ const sec = ms => ms == null ? '' : +(ms / 1000).toFixed(2);
 $('#exp-xlsx').onclick = () => {
   const c = cls(); const R = renderBilan(true); const F = filtered(c); const st = stats(c, F.rel);
   const nm = (id, sn) => { const s = stu(c, id) || sn || {}; return [s.nom || '', s.prenom || '']; };
-  const notes = [['Nom', 'Prénom', 'Sexe', 'Groupe', 'Meilleur 50 m (s)', 'Vitesse individuelle /3', 'Meilleur relais (s)', 'Relais équiv. 100 m (s)', 'Vitesse collective /3',
+  const notes = [['Nom', 'Prénom', 'Sexe', 'Groupe', 'Meilleur 50 m (s)', 'Vitesse individuelle /3', 'Meilleur relais (s)', 'Relais équiv. 100 m (s)', 'Barème relais', 'Vitesse collective /3',
     'Courses', 'Ratées', 'Étoiles retenues', 'Total étoiles /16', 'Extrapolé', 'Degré', '% critères', 'Efficacité technique /6', 'Ajusté', 'TOTAL /12', 'Complet']]
     .concat([...R].sort((a, b) => (a.s.nom + a.s.prenom).localeCompare(b.s.nom + b.s.prenom, 'fr')).map(r => [
-      r.s.nom, r.s.prenom, r.sexe, c.tg[r.sid] || '', sec(r.b50), r.ind ?? '', sec(r.bestRelReal), sec(r.bestRel), r.col ?? '',
+      r.s.nom, r.s.prenom, r.sexe, c.tg[r.sid] || '', sec(r.b50), r.ind ?? '', sec(r.bestRelReal), sec(r.bestRel), r.bestRel == null ? '' : r.mixed ? 'Mixte' : r.sexe === 'F' ? 'Filles' : r.sexe === 'G' ? 'Garçons' : '', r.col ?? '',
       r.mine.length, r.nFail, r.used.join('+'), r.stars ?? '', r.n && r.n < 4 ? `oui (${r.n} courses)` : '', r.et ? r.et.deg.n : '',
       r.rate != null ? pct(r.rate, 1) : '', r.et ? r.et.note : '', r.et && r.et.manual ? 'oui' : '',
       r.total != null ? Math.round(r.total * 100) / 100 : '', r.complete ? 'oui' : 'non']));
