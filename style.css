@@ -476,3 +476,12 @@ h2 small{font-weight:500}
 .del-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
 .del-grid>div{display:flex;flex-direction:column;gap:8px;background:#fff7f7;border:1.5px solid #fecdd3;border-radius:14px;padding:12px}
 .del-grid b{color:var(--navy)}
+
+/* v4.8 : caractéristiques, vidéo par leçon, PDF */
+.vid-flag{background:#1e293b;color:#fff;border-radius:999px;padding:4px 10px;font-size:.8rem;font-weight:800}
+.crit-box.off{opacity:.55}
+.opt-ed{display:flex;gap:4px;align-items:center}
+.opt-ed input{flex:1;min-width:0}
+label.check.big{font-size:1.05rem;padding:8px 12px;border:1.5px solid var(--line);border-radius:12px;background:#fff}
+.tg-kpi .btn{margin-right:6px}
+.check.obs{font-size:.8rem;color:var(--mute);white-space:nowrap}

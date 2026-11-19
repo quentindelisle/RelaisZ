@@ -101,6 +101,28 @@
       <p class="hint">Pour chaque critère, choisissez la réponse : <b>Oui / Non</b>, <b>échelle de 1 (moins bien) à 10 (parfait)</b> ou <b>libre</b> (vous fixez le nombre de cases et leur texte). Tous doivent être renseignés avant le binôme suivant. Changer le type d'un critère en crée un nouveau dans le bilan. Ils partent sur les tablettes avec la séance : renvoyez le QR après une modification.</p>
     </div>
 
+    <h2>Caractéristiques de la transmission <small>observées à chaque passage de la leçon Travail de groupe</small></h2>
+    <div class="card">
+      <div id="tx-edit"></div>
+      <div class="row gap wrap" style="margin-top:10px">
+        <button id="tx-add" class="btn ghost small">+ Ajouter une caractéristique</button>
+        <button id="tx-reset" class="btn ghost small">Rétablir les 5 caractéristiques de départ</button>
+        <button id="tx-save" class="btn primary small">Enregistrer les caractéristiques</button>
+      </div>
+      <p class="hint">Cochez celles que les élèves doivent renseigner, modifiez les intitulés et les choix proposés (ajoutez ou retirez des cases). Elles partent sur les tablettes avec la séance : renvoyez le QR après une modification.</p>
+    </div>
+
+    <h2>Vidéo différée <small>choix par leçon, envoyé aux tablettes</small></h2>
+    <div class="card">
+      <div class="row gap wrap">
+        <label class="check big"><input type="checkbox" id="vid-rel"> ② Relais à deux</label>
+        <label class="check big"><input type="checkbox" id="vid-tg"> ③ Travail de groupe</label>
+        <label class="inline">Relecture après <select id="vid-delay-p"><option value="3">3 s</option><option value="5">5 s</option><option value="8">8 s</option><option value="10">10 s</option></select></label>
+        <button id="vid-save" class="btn primary small">Enregistrer</button>
+      </div>
+      <p class="hint">Quand la vidéo est activée pour une leçon, la tablette filme chaque passage dès le top « Début » et le rejoue avec les critères incrustés. La vidéo n'est jamais enregistrée ni envoyée.</p>
+    </div>
+
     <h2>Barèmes</h2>
     <div class="card" id="bareme-box"></div>
 
@@ -185,7 +207,7 @@
   <!-- ============ LEÇON TRAVAIL DE GROUPE ============ -->
   <section id="v-tg" class="view">
     <div class="phase-bar p3">
-      <div><span class="ph big">3</span> <b>Travail de groupe</b> <span class="meta" id="tg-info"></span></div>
+      <div><span class="ph big">3</span> <b>Travail de groupe</b> <span class="meta" id="tg-info"></span> <span class="vid-flag hidden" id="vid-flag-tg">🎥 vidéo différée</span></div>
       <div class="row gap wrap" id="tg-gsel"></div>
     </div>
     <div id="tg-head"></div>
@@ -267,8 +289,7 @@
     <div class="phase-bar p2">
       <div><span class="ph big">2</span> <b>Relais</b> <span class="meta" id="group-info"></span></div>
       <div class="row gap wrap">
-        <div class="vid-set"><button class="btn ghost small" id="vid-toggle">🎥 Vidéo différée : non</button>
-          <label class="inline small" id="vid-delay-l">relecture après <select id="vid-delay"><option value="3">3 s</option><option value="5">5 s</option><option value="8">8 s</option><option value="10">10 s</option></select></label></div>
+        <span class="vid-flag hidden" id="vid-flag-rel">🎥 vidéo différée</span>
         <button class="btn ghost small" id="rel-group">Changer de groupe</button>
       </div>
     </div>
@@ -365,7 +386,7 @@
     <div id="b-hist50" class="list"></div>
   </section>
 
-  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v4.7 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
+  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v4.8 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
 </main>
 
 <div id="toast" class="toast"></div>
@@ -375,6 +396,7 @@
 <script src="lib/jsQR.js"></script>
 <script src="lib/zxing-reader.js"></script>
 <script src="vendor/xlsx.mini.min.js"></script>
+<script src="lib/jspdf.umd.min.js"></script>
 <script src="qr.js"></script>
 <script src="app.js"></script>
 </body>

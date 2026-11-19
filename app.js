@@ -103,6 +103,7 @@ function load() {
 function migrate(d) {
   d.v = 4;
   d.settings = Object.assign({ total: 100, zt: 20, tablet: '', rec: 210 }, d.settings || {});
+  if (!d.settings.vid) d.settings.vid = { rel: !!d.settings.video, tg: !!d.settings.video };
   if (!d.pin) d.pin = '0000';
   if (d.mode === undefined) d.mode = null;              // 'prof' | 'eleve' | null (premier lancement)
   d.classes.forEach(c => {
@@ -382,7 +383,7 @@ function renderMenu() {
        <button class="tile-btn orange" data-go="bilan"><span>📊</span>Bilan chiffré</button>`, nRel > 0) +
     step('4', 'Leçon Travail de groupe', `Mêmes groupes que l'étape 2. Les binômes du groupe sont proposés, les élèves choisissent ceux qu'ils courent ; caractéristiques de la transmission notées à chaque passage. <b>${c.passages.filter(p => p.les === 'tg').length}</b> passages reçus.`,
       `<button class="tile-btn" data-go="recv-r"><span>📥</span>Récupérer</button>
-       <button class="tile-btn orange" data-go="bilan-tg"><span>📊</span>Bilan du travail de groupe</button>`, c.passages.some(p => p.les === 'tg')) +
+       <button class="tile-btn orange" data-go="bilan-tg"><span>📊</span>Bilan + PDF par groupe</button>`, c.passages.some(p => p.les === 'tg')) +
     `<div class="step local"><div class="step-n">⏱</div><div class="step-body"><h3>Chronométrer sur cette tablette</h3>
       <div class="step-btns"><button class="tile-btn" data-go="sprint"><span>①</span>50 m</button><button class="tile-btn" data-go="tiles"><span>②</span>Relais</button><button class="tile-btn" data-go="tg"><span>③</span>Travail de groupe</button></div></div></div>`;
 }
@@ -427,7 +428,8 @@ function renderEleve() {
    ===================================================================== */
 function buildS(c) {
   return { a: APP, t: 'S', v: 4, ts: Date.now(), cid: c.id, cn: c.name, pin: S.pin,
-    set: { total: S.settings.total, zt: S.settings.zt, rec: S.settings.rec },
+    set: { total: S.settings.total, zt: S.settings.zt, rec: S.settings.rec, vid: S.settings.vid, vdelay: S.settings.vdelay },
+    txc: txAll(c),
     crit: crits(c).map(x => [x.k, x.l, ctype(x), x.o || [], x.ord ? 1 : 0]), ng: 0,
     tgN: c.tgN || 0, abs: { day: today(), ids: absIds(c).map(id => c.students.findIndex(s => s.id === id)).filter(i => i >= 0) },
     st: c.students.map(s => [s.nom, s.prenom, s.sexe || '', best50(c, s.id), 0, c.tgN ? (c.tg[s.id] || 0) : 0]) };
@@ -452,6 +454,7 @@ function applyS(p) {
   c.ng = p.ng || 0;
   if (changed || (c.myGroup != null && c.myGroup > c.ng)) c.myGroup = null;
   c.crit = p.crit.map(([k, l, t, o, ord]) => ({ k, l, t: t || 'yn', o: o || [], ord: !!ord }));
+  if (p.txc) c.txc = p.txc;
   c.recvAt = Date.now();
   Object.assign(S.settings, p.set); S.pin = p.pin || S.pin;
   S.cur = c.id; save();
@@ -460,12 +463,12 @@ function applyS(p) {
 function buildR(c) {
   const mineS = c.sprints.filter(s => s.local), mineP = c.passages.filter(p => p.local);
   const u = [...new Set([...mineS.map(s => s.sid), ...mineP.flatMap(p => [p.d, p.r])])];
-  const ix = id => u.indexOf(id), ck = crits(c).map(x => x.k);
-  return { a: APP, t: 'R', v: 4, ts: Date.now(), cid: c.id, cn: c.name, tab: tabletName(), u, ck, del: c.deleted || [],
+  const ix = id => u.indexOf(id), ck = crits(c).map(x => x.k), tk = txAll(c).map(t => t.k);
+  return { a: APP, t: 'R', v: 4, ts: Date.now(), cid: c.id, cn: c.name, tab: tabletName(), u, ck, tk: txAll(c).map(t => t.k), del: c.deleted || [],
     s: mineS.map(s => [s.id, ix(s.sid), s.t, s.ts, s.endAt || null]),
     p: mineP.map(p => [p.id, p.ts, p.endAt || null, ix(p.d), ix(p.r), p.tIn, p.tZt, p.tEnd, p.cible ?? null,
       p.fail ? FAILS.findIndex(f => f.k === p.fail) + 1 : 0, ck.map(k => { const v = p.c[k]; return v === true ? 1 : v === false ? 0 : v ?? null; }),
-      p.cfg.total, p.cfg.zt, p.les === 'tg' ? 1 : 0, p.grp || 0, p.tx ? [p.tx.md, p.tx.mr, p.tx.sens, p.tx.rep, p.tx.mom] : null]) };
+      p.cfg.total, p.cfg.zt, p.les === 'tg' ? 1 : 0, p.grp || 0, p.tx ? tk.map(k => p.tx[k] ?? null) : null]) };
 }
 function mergeR(R) {
   if (!R || R.a !== APP || R.t !== 'R') throw new Error('Ce QR n\'est pas un envoi de résultats Zones Relais');
@@ -496,7 +499,7 @@ function mergeR(R) {
     });
     c.passages.push(finalize({ id, ts, endAt, tablet: R.tab, local: false, d, r, dSnap: snap(c, d), rSnap: snap(c, r),
       tIn, tZt, tEnd, cible, fail: fc ? FAILS[fc - 1].k : null, c: cm, cfg: { total, zt },
-      les: les ? 'tg' : null, grp: grp || null, tx: tx ? { md: tx[0], mr: tx[1], sens: tx[2], rep: tx[3], mom: tx[4] } : undefined }));
+      les: les ? 'tg' : null, grp: grp || null, tx: tx ? Object.fromEntries((R.tk || ['md', 'mr', 'sens', 'rep', 'mom']).map((k, j) => [k, tx[j]]).filter(([, v]) => v != null)) : undefined }));
     np++;
   });
   save();
@@ -732,7 +735,7 @@ function renderParams() {
   const opts = [120, 150, 180, 210, 240, 270, 300];
   $('#set-rec').innerHTML = opts.map(s => `<option value="${s}" ${s === S.settings.rec ? 'selected' : ''}>${mmss(s * 1000)}${s === 210 ? ' (recommandé)' : ''}</option>`).join('');
   $('#crit-class').textContent = '· ' + c.name;
-  paintBulk();
+  paintBulk(); renderTxEdit(); renderVidSettings();
   critDraft = crits(c).map(x => ({ ...x }));
   paintCrit();
   renderBareme();
@@ -811,6 +814,57 @@ function renderBareme() {
       <tr>${DEGREES.map(d => d.lv.map(v => `<td class="lv r${d.n}">${fpt(v)}</td>`).join('')).join('')}</tr></table></div>
     <p class="hint">Niveau dans le degré proposé selon le % de critères qualitatifs réussis ; 6 seulement avec 16 ★ obtenues sur 4 courses. Avec 2 ou 3 courses, total d'étoiles extrapolé sur 4.</p>`;
 }
+/* ---- caractéristiques de la transmission (éditeur) ---- */
+let txDraft = [];
+function renderTxEdit() { txDraft = JSON.parse(JSON.stringify(txAll(cls()))); paintTxEdit(); }
+function paintTxEdit() {
+  $('#tx-edit').innerHTML = txDraft.map((t, i) => `<div class="crit-box ${t.on === false ? 'off' : ''}">
+    <div class="crit-ed"><label class="check obs"><input type="checkbox" data-xon="${i}" ${t.on !== false ? 'checked' : ''}> observée</label>
+      <input type="text" value="${esc(t.l)}" data-xl="${i}" maxlength="60" placeholder="Nouvelle caractéristique">
+      <button class="btn ghost small" data-xup="${i}" ${i ? '' : 'disabled'}>↑</button>
+      <button class="btn danger-ghost small" data-xdel="${i}">✕</button></div>
+    <div class="crit-opts">
+      <div class="seg small"><button data-xt="${i}" data-t="choice" class="${t.t !== 'num' ? 'on' : ''}">Choix</button><button data-xt="${i}" data-t="num" class="${t.t === 'num' ? 'on' : ''}">Mesure</button></div>
+      ${t.t === 'num' ? `<label class="inline">Unité <select data-xu="${i}">${['pieds', 'm', 'semelles', 'plots'].map(u => `<option ${u === t.unit ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
+        <label class="inline">Pas <select data-xs="${i}">${[0.1, 0.25, 0.5, 1].map(v => `<option value="${v}" ${v === (t.step || 0.5) ? 'selected' : ''}>${String(v).replace('.', ',')}</option>`).join('')}</select></label>
+        <label class="inline">Valeur de départ <input type="number" step="any" data-xdef="${i}" value="${t.def ?? ''}" style="width:90px"></label>` : ''}
+    </div>
+    ${t.t !== 'num' ? `<div class="free-opts">${(t.o || []).map(([v, l], j) => `<span class="opt-ed"><input type="text" data-xo="${i}" data-j="${j}" value="${esc(l)}" maxlength="30" placeholder="Choix ${j + 1}"><button class="btn danger-ghost small" data-xodel="${i}" data-j="${j}" ${(t.o || []).length > 2 ? '' : 'disabled'}>✕</button></span>`).join('')}
+      <button class="btn ghost small" data-xoadd="${i}">+ choix</button></div>` : ''}
+  </div>`).join('');
+  const T = i => txDraft[+i];
+  $$('#tx-edit [data-xon]').forEach(x => x.onchange = () => { T(x.dataset.xon).on = x.checked; paintTxEdit(); });
+  $$('#tx-edit [data-xl]').forEach(x => x.oninput = () => { T(x.dataset.xl).l = x.value; });
+  $$('#tx-edit [data-xup]').forEach(b => b.onclick = () => { const i = +b.dataset.xup; [txDraft[i - 1], txDraft[i]] = [txDraft[i], txDraft[i - 1]]; paintTxEdit(); });
+  $$('#tx-edit [data-xdel]').forEach(b => b.onclick = () => { txDraft.splice(+b.dataset.xdel, 1); paintTxEdit(); });
+  $$('#tx-edit [data-xt]').forEach(b => b.onclick = () => {
+    const t = T(b.dataset.xt); t.t = b.dataset.t;
+    if (t.t === 'num') { t.unit = t.unit || 'pieds'; t.step = t.step || 0.5; } else if (!(t.o && t.o.length >= 2)) t.o = [['a', ''], ['b', '']];
+    paintTxEdit();
+  });
+  $$('#tx-edit [data-xu]').forEach(x => x.onchange = () => { T(x.dataset.xu).unit = x.value; });
+  $$('#tx-edit [data-xs]').forEach(x => x.onchange = () => { T(x.dataset.xs).step = +x.value; });
+  $$('#tx-edit [data-xdef]').forEach(x => x.oninput = () => { T(x.dataset.xdef).def = x.value === '' ? null : +x.value; });
+  $$('#tx-edit [data-xo]').forEach(x => x.oninput = () => { T(x.dataset.xo).o[+x.dataset.j][1] = x.value; });
+  $$('#tx-edit [data-xodel]').forEach(b => b.onclick = () => { T(b.dataset.xodel).o.splice(+b.dataset.j, 1); paintTxEdit(); });
+  $$('#tx-edit [data-xoadd]').forEach(b => b.onclick = () => { const t = T(b.dataset.xoadd); t.o.push(['o' + uid().slice(-5), '']); paintTxEdit(); });
+}
+$('#tx-add').onclick = () => { txDraft.push({ k: 'x' + uid().slice(-6), l: '', on: true, t: 'choice', o: [['a', ''], ['b', '']] }); paintTxEdit(); };
+$('#tx-reset').onclick = () => { txDraft = JSON.parse(JSON.stringify(DEFAULT_TX)); paintTxEdit(); };
+$('#tx-save').onclick = () => {
+  const list = txDraft.map(t => ({ ...t, l: (t.l || '').trim(), o: t.t === 'num' ? undefined : (t.o || []).map(([v, l], j) => [v, (l || '').trim() || 'Choix ' + (j + 1)]) })).filter(t => t.l);
+  if (list.some(t => t.t !== 'num' && t.o.length < 2)) { toast('Chaque caractéristique à choix doit avoir au moins 2 choix'); return; }
+  cls().txc = list; save(); toast('Caractéristiques enregistrées · renvoyez la séance aux tablettes'); renderTxEdit();
+};
+function renderVidSettings() {
+  $('#vid-rel').checked = !!S.settings.vid.rel; $('#vid-tg').checked = !!S.settings.vid.tg;
+  $('#vid-delay-p').value = String(S.settings.vdelay || 5);
+}
+$('#vid-save').onclick = () => {
+  S.settings.vid = { rel: $('#vid-rel').checked, tg: $('#vid-tg').checked }; S.settings.vdelay = +$('#vid-delay-p').value; save();
+  toast(`Vidéo : relais à deux ${S.settings.vid.rel ? 'oui' : 'non'} · travail de groupe ${S.settings.vid.tg ? 'oui' : 'non'} · renvoyez la séance aux tablettes`, 3500);
+};
+
 /* ---- suppression groupée des performances (classe ouverte) ---- */
 function paintBulk() {
   const c = cls(); if (!c) return;
@@ -973,26 +1027,30 @@ function relayStudents(c) {
    LEÇON TRAVAIL DE GROUPE : groupes de 3 ou 4, tous les binômes (chaque élève démarreur ET relayeur),
    cible, indice de transmission, caractéristiques de la transmission notées à chaque passage
    ===================================================================== */
-const TX = [
-  { k: 'md', l: 'Main du donneur', o: [['D', 'Droite'], ['G', 'Gauche']] },
-  { k: 'mr', l: 'Main du receveur', o: [['D', 'Droite'], ['G', 'Gauche']] },
-  { k: 'sens', l: 'Transmission', o: [['M', 'Montante'], ['D', 'Descendante']] },
-  { k: 'rep', l: 'Distance du repère de démarrage', unit: 'pieds' },
-  { k: 'mom', l: 'Moment de la transmission', o: [['D', 'Début de zone'], ['M', 'Milieu de zone'], ['F', 'Fin de zone']] }
+const DEFAULT_TX = [
+  { k: 'md', l: 'Main du donneur', on: true, t: 'choice', o: [['D', 'Droite'], ['G', 'Gauche']] },
+  { k: 'mr', l: 'Main du receveur', on: true, t: 'choice', o: [['D', 'Droite'], ['G', 'Gauche']] },
+  { k: 'sens', l: 'Transmission', on: true, t: 'choice', o: [['M', 'Montante'], ['D', 'Descendante']] },
+  { k: 'rep', l: 'Distance du repère de démarrage', on: true, t: 'num', unit: 'pieds', step: 0.5, def: 15 },
+  { k: 'mom', l: 'Moment de la transmission', on: true, t: 'choice', o: [['D', 'Début de zone'], ['M', 'Milieu de zone'], ['F', 'Fin de zone']] }
 ];
+const txAll = c => (c && c.txc && c.txc.length ? c.txc : DEFAULT_TX);
+const txs = c => txAll(c).filter(t => t.on !== false);            // caractéristiques observées
 const fpied = v => v == null ? '–' : String(v).replace('.', ',');
-const txVal = (t, v) => v == null ? '' : t.k === 'rep' ? v : (t.o.find(o => o[0] === v) || [, '?'])[1];
-const txText = x => x && x.md ? `${x.md === 'D' ? 'Droite' : 'Gauche'} → ${x.mr === 'D' ? 'droite' : 'gauche'} · ${x.sens === 'M' ? 'montante' : 'descendante'} · ${fpied(x.rep)} pieds · ${({ D: 'début', M: 'milieu', F: 'fin' })[x.mom] || '?'} de zone` : '—';
-const txSame = (a, b) => !!(a && b && a.md === b.md && a.mr === b.mr && a.sens === b.sens && a.mom === b.mom && Math.abs((a.rep ?? 0) - (b.rep ?? 0)) <= 0.5);
+const txVal = (t, v) => v == null ? '' : t.t === 'num' ? v : ((t.o || []).find(o => o[0] === v) || [, '?'])[1];
+const txShow = (t, v) => v == null ? '–' : t.t === 'num' ? `${fpied(v)} ${t.unit || ''}`.trim() : txVal(t, v);
+const txHas = (c, x) => !!(x && txs(c).some(t => x[t.k] != null));
+const txText = (c, x) => txHas(c, x) ? txs(c).filter(t => x[t.k] != null).map(t => txShow(t, x[t.k])).join(' · ') : '—';
+const txSame = (c, a, b) => !!(a && b && txs(c).every(t => t.t === 'num' ? Math.abs((a[t.k] ?? 0) - (b[t.k] ?? 0)) <= (t.step || 0.5) : a[t.k] === b[t.k]));
 function tgMembers(c, g, withAbs) { return c.students.filter(s => c.tg[s.id] === g && (withAbs || !isAbs(c, s.id))).sort(byFirst); }
 function tgPairs(c, g) { const m = tgMembers(c, g), out = []; m.forEach(a => m.forEach(b => { if (a.id !== b.id) out.push([a.id, b.id]); })); return out; }
 const pairPass = (c, d, r, list = c.passages) => list.filter(p => p.les === 'tg' && p.d === d && p.r === r);
-function lastTx(c, d, r) { const l = pairPass(c, d, r).filter(p => p.tx && p.tx.md).sort((a, b) => b.ts - a.ts)[0]; return l ? { ...l.tx } : null; }
-function txModal(list) { // caractéristiques les plus fréquentes et constance
-  const t = list.filter(p => p.tx && p.tx.md);
+function lastTx(c, d, r) { const l = pairPass(c, d, r).filter(p => txHas(c, p.tx)).sort((a, b) => b.ts - a.ts)[0]; return l ? { ...l.tx } : null; }
+function txModal(c, list) { // caractéristiques les plus fréquentes et constance
+  const t = list.filter(p => txHas(c, p.tx));
   if (!t.length) return { tx: null, n: 0, same: 0 };
   let best = t[0].tx, bn = 0;
-  t.forEach(p => { const n = t.filter(q => txSame(p.tx, q.tx)).length; if (n > bn) { bn = n; best = p.tx; } });
+  t.forEach(p => { const n = t.filter(q => txSame(c, p.tx, q.tx)).length; if (n > bn) { bn = n; best = p.tx; } });
   return { tx: best, n: t.length, same: bn };
 }
 function pairStats(c, d, r, list) {
@@ -1000,7 +1058,7 @@ function pairStats(c, d, r, list) {
   const its = P.map(p => passIT(c, p)).filter(x => x != null), st = P.map(p => passStars(c, p)).filter(x => x != null);
   const best = ok.length ? ok.reduce((a, p) => teqOf(p) < teqOf(a) ? p : a) : null;
   return { P, n: P.length, best, bestIT: its.length ? Math.min(...its) : null, beat: P.filter(p => !p.fail && passStars(c, p) === 4).length,
-    bestStars: st.length ? Math.max(...st) : null, meanStars: st.length ? st.reduce((a, b) => a + b, 0) / st.length : null, mod: txModal(P) };
+    bestStars: st.length ? Math.max(...st) : null, meanStars: st.length ? st.reduce((a, b) => a + b, 0) / st.length : null, mod: txModal(c, P) };
 }
 
 /* ---- prof : constitution des groupes par cliquer-glisser ---- */
@@ -1113,7 +1171,7 @@ $('#tg-send').onclick = () => { if (saveTg()) { sendKind = 'S'; show('send'); } 
 /* ---- tablette : les binômes du groupe ---- */
 let tgProfG = 1;
 function renderTg() {
-  const c = cls();
+  const c = cls(); paintVidSet();
   if (!c.tgN) { $('#tg-head').innerHTML = `<div class="empty">${isProf() ? 'Constituez d\'abord les groupes de travail.' : 'En attente des groupes de travail du prof (📷 Recevoir la séance).'}</div>`; $('#tg-pairs').innerHTML = ''; $('#tg-gsel').innerHTML = ''; return; }
   // groupes accessibles : tous côté prof, ceux cochés côté élève ; on bascule de l'un à l'autre à tout moment
   const avail = isProf() ? Array.from({ length: c.tgN }, (_, i) => i + 1) : c.myTg;
@@ -1145,7 +1203,7 @@ function renderTg() {
       <span class="pc-row">${st.bestStars != null ? starsHTML(st.bestStars) : '<span class="meta">pas encore couru</span>'}
         ${st.bestIT != null ? `<span class="${st.bestIT <= 0 ? 'ok' : 'ko'}">IT ${fit(st.bestIT)}</span>` : ''}
         ${st.n ? `<span>cible battue ${st.beat}/${st.n}</span>` : ''}</span>
-      <span class="pc-tx">${last ? '✋ ' + esc(txText(last)) : 'caractéristiques à définir au 1er passage'}${cons != null ? ` · <b class="${cons >= 75 ? 'ok' : cons >= 50 ? 'mid' : 'ko'}">constance ${cons} %</b>` : ''}</span>
+      <span class="pc-tx">${last ? '✋ ' + esc(txText(c, last)) : 'caractéristiques à définir au 1er passage'}${cons != null ? ` · <b class="${cons >= 75 ? 'ok' : cons >= 50 ? 'mid' : 'ko'}">constance ${cons} %</b>` : ''}</span>
     </button>`;
   }).join('') || '<div class="empty">Pas assez d\'élèves dans ce groupe.</div>';
   $$('#tg-pairs .pair-card').forEach(b => b.onclick = () => {
@@ -1165,16 +1223,26 @@ function renderTx(p) {
   box.classList.remove('hidden');
   p.tx = p.tx || {};
   const prev = p.txPrev;
+  const c = cls(), list = txs(c);
+  if (!list.length) { box.classList.add('hidden'); return; }
   box.innerHTML = `<h3>Caractéristiques de la transmission ${prev ? '<span class="meta">· reprises du passage précédent du binôme : modifiez seulement ce qui a changé</span>' : '<span class="meta">· premier passage du binôme</span>'}</h3>` +
-    TX.map(t => {
-      const v = p.tx[t.k], changed = prev && v != null && (t.k === 'rep' ? Math.abs(v - (prev.rep ?? 0)) > 0.5 : v !== prev[t.k]);
-      const ctl = t.k === 'rep'
-        ? `<div class="rep-ctl"><button class="btn ghost" data-rep="-1">−1</button><button class="btn ghost" data-rep="-0.5">−½</button><b>${fpied(v)} <small>pieds</small></b><button class="btn ghost" data-rep="0.5">+½</button><button class="btn ghost" data-rep="1">+1</button></div>`
-        : `<div class="yn">${t.o.map(([val, l]) => `<button class="btn opt ${v === val ? 'chosen' : ''}" data-tx="${t.k}" data-val="${val}">${l}</button>`).join('')}</div>`;
-      return `<div class="tx-row ${v == null ? 'todo' : ''} ${changed ? 'changed' : ''}"><span class="tx-lbl">${t.l}${changed ? ' <em>⚠ modifié</em>' : ''}</span>${ctl}</div>`;
+    list.map(t => {
+      const v = p.tx[t.k], pv = prev ? prev[t.k] : null;
+      const changed = prev && v != null && pv != null && (t.t === 'num' ? Math.abs(v - pv) > 1e-9 : v !== pv);
+      const st = t.step || 0.5, f = x => String(x).replace('.', ',');
+      const ctl = t.t === 'num'
+        ? `<div class="rep-ctl"><button class="btn ghost" data-num="${t.k}" data-d="${-2 * st}">−${f(2 * st)}</button><button class="btn ghost" data-num="${t.k}" data-d="${-st}">−${f(st)}</button>
+            <b>${v == null ? '–' : fpied(v)} <small>${esc(t.unit || '')}</small></b>
+            <button class="btn ghost" data-num="${t.k}" data-d="${st}">+${f(st)}</button><button class="btn ghost" data-num="${t.k}" data-d="${2 * st}">+${f(2 * st)}</button></div>`
+        : `<div class="yn">${(t.o || []).map(([val, l]) => `<button class="btn opt ${v === val ? 'chosen' : ''}" data-tx="${t.k}" data-val="${esc(val)}">${esc(l)}</button>`).join('')}</div>`;
+      return `<div class="tx-row ${v == null ? 'todo' : ''} ${changed ? 'changed' : ''}"><span class="tx-lbl">${esc(t.l)}${changed ? ' <em>⚠ modifié</em>' : ''}</span>${ctl}</div>`;
     }).join('');
   box.querySelectorAll('[data-tx]').forEach(b => b.onclick = () => { p.tx[b.dataset.tx] = b.dataset.val; save(); renderEval(); });
-  box.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => { p.tx.rep = p.tx.rep == null ? 15 : Math.max(0, Math.round((p.tx.rep + +b.dataset.rep) * 2) / 2); save(); renderEval(); });
+  box.querySelectorAll('[data-num]').forEach(b => b.onclick = () => {
+    const t = list.find(x => x.k === b.dataset.num), st = t.step || 0.5, cur = p.tx[t.k];
+    p.tx[t.k] = cur == null ? (t.def ?? 0) : Math.max(0, Math.round((cur + +b.dataset.d) / st) * st);
+    p.tx[t.k] = Math.round(p.tx[t.k] * 100) / 100; save(); renderEval();
+  });
 }
 
 /* ---- bilan du travail de groupe ---- */
@@ -1182,14 +1250,15 @@ function renderTgBilan(c, list) {
   const T = list.filter(p => p.les === 'tg'), el = $('#b-tg');
   if (!T.length) { el.innerHTML = ''; return; }
   const groups = [...new Set([...T.map(p => p.grp || c.tg[p.d] || 0)])].sort((a, b) => a - b);
-  el.innerHTML = `<h2>Travail de groupe <small>${T.length} passages</small></h2>` + groups.map(g => {
+  el.innerHTML = `<div class="row between wrap"><h2>Travail de groupe <small>${T.length} passages</small></h2>
+      <button class="btn primary small" data-pdf="all">📄 Récapitulatif PDF de tous les groupes</button></div>` + groups.map(g => {
     const P = T.filter(p => (p.grp || c.tg[p.d] || 0) === g);
     const pairs = [...new Set([...(c.tg && g ? tgPairs(c, g) : []).map(x => x.join('>')), ...P.map(p => p.d + '>' + p.r)])].map(k => k.split('>'));
     const its = P.map(p => passIT(c, p)).filter(x => x != null), st = P.map(p => passStars(c, p)).filter(x => x != null);
-    const allMod = pairs.map(([d, r]) => txModal(pairPass(c, d, r, P))).filter(m => m.n >= 2);
+    const allMod = pairs.map(([d, r]) => txModal(c, pairPass(c, d, r, P))).filter(m => m.n >= 2);
     const cons = allMod.length ? pct(allMod.reduce((a, m) => a + m.same, 0), allMod.reduce((a, m) => a + m.n, 0)) : null;
     return `<div class="card tg-card"><div class="row between wrap"><h3 style="margin:0">Groupe ${g || '?'} <span class="meta">${tgMembers(c, g).map(s => esc(dnStudent(c, s))).join(' · ')}</span></h3>
-      <div class="tg-kpi"><span>🎯 cible battue <b>${P.filter(p => !p.fail && passStars(c, p) === 4).length}/${P.length}</b></span><span>★ moyennes <b>${st.length ? fnum(st.reduce((a, b) => a + b, 0) / st.length) : '–'}</b></span><span>✋ constance <b>${cons != null ? cons + ' %' : '–'}</b></span></div></div>
+      <div class="tg-kpi"><button class="btn ghost small" data-pdf="${g}">📄 PDF du groupe ${g}</button><span>🎯 cible battue <b>${P.filter(p => !p.fail && passStars(c, p) === 4).length}/${P.length}</b></span><span>★ moyennes <b>${st.length ? fnum(st.reduce((a, b) => a + b, 0) / st.length) : '–'}</b></span><span>✋ constance <b>${cons != null ? cons + ' %' : '–'}</b></span></div></div>
       <div class="table-wrap flat"><table><tr><th style="text-align:left">Binôme</th><th>Passages</th><th>Cible</th><th>Meilleur temps</th><th>Meilleur IT</th><th>Étoiles<br><small>meilleure · moy.</small></th><th>Cible battue</th><th style="text-align:left">Caractéristiques habituelles</th><th>Constance</th></tr>
       ${pairs.map(([d, r]) => { const s2 = pairStats(c, d, r, P), cb = cible100(c, d, r);
         const k = s2.mod.n >= 2 ? pct(s2.mod.same, s2.mod.n) : null;
@@ -1198,17 +1267,95 @@ function renderTgBilan(c, list) {
           <td>${s2.bestIT != null ? `<span class="chip ${s2.bestIT <= 0 ? 'hi' : s2.bestIT <= 0.5 ? 'mid' : 'lo'}">${fit(s2.bestIT)}</span>` : '–'}</td>
           <td>${s2.bestStars != null ? `<span class="st">${'★'.repeat(s2.bestStars)}</span> · ${fnum(s2.meanStars)}` : '–'}</td>
           <td>${s2.n ? `${s2.beat}/${s2.n}` : '–'}</td>
-          <td style="text-align:left;white-space:normal">${esc(txText(s2.mod.tx))}</td>
+          <td style="text-align:left;white-space:normal">${esc(txText(c, s2.mod.tx))}</td>
           <td>${k != null ? `<span class="chip ${k >= 75 ? 'hi' : k >= 50 ? 'mid' : 'lo'}">${k} %</span>` : '–'}</td></tr>`; }).join('')}</table></div></div>`;
   }).join('');
+  el.querySelectorAll('[data-pdf]').forEach(b => b.onclick = () => tgPdf(b.dataset.pdf === 'all' ? groups.filter(Boolean) : [+b.dataset.pdf]));
 }
 function tgPairRows(c, list) {
   const T = list.filter(p => p.les === 'tg'); const rows = [['Groupe', 'Binôme (démarreur ➜ relayeur)', 'Passages', 'Cible (s)', 'Meilleur temps (s)', 'Meilleur IT (s)', 'Meilleures étoiles', 'Étoiles moyennes', 'Cible battue', 'Caractéristiques habituelles', 'Constance (%)']];
   const keys = [...new Set(T.map(p => (p.grp || 0) + '§' + p.d + '>' + p.r))].sort();
   keys.forEach(k => { const [g, pr] = k.split('§'), [d, r] = pr.split('>'), s2 = pairStats(c, d, r, T.filter(p => String(p.grp || 0) === g)), cb = cible100(c, d, r);
     rows.push([+g || '', `${dn(c, d)} ➜ ${dn(c, r)}`, s2.n, cb != null ? +(cb * S.settings.total / BASE / 1000).toFixed(2) : '', s2.best ? +(s2.best.tEnd / 1000).toFixed(2) : '',
-      s2.bestIT ?? '', s2.bestStars ?? '', s2.meanStars != null ? +s2.meanStars.toFixed(1) : '', `${s2.beat}/${s2.n}`, txText(s2.mod.tx), s2.mod.n >= 2 ? pct(s2.mod.same, s2.mod.n) : '']); });
+      s2.bestIT ?? '', s2.bestStars ?? '', s2.meanStars != null ? +s2.meanStars.toFixed(1) : '', `${s2.beat}/${s2.n}`, txText(c, s2.mod.tx), s2.mod.n >= 2 ? pct(s2.mod.same, s2.mod.n) : '']); });
   return rows;
+}
+
+/* ---- récapitulatif PDF des caractéristiques par groupe (pour les élèves, sans pied de page) ---- */
+function pdfSafe(t) { return String(t ?? '').replace(/[➜→]/g, '->').replace(/[−–]/g, '-').replace(/★/g, '*').replace(/[✓✔]/g, 'v').replace(/[✗✕]/g, 'x').replace(/[^\x00-\xFF€’œŒ]/g, ''); }
+function bestPass(c, P) { // passage de référence : meilleur indice technique (puis le plus récent)
+  const ok = P.filter(p => !p.fail && passIT(c, p) != null && txHas(c, p.tx));
+  return ok.length ? ok.reduce((a, p) => passIT(c, p) < passIT(c, a) || (passIT(c, p) === passIT(c, a) && p.ts > a.ts) ? p : a) : null;
+}
+function tgPdf(groups) {
+  if (!window.jspdf) { toast('Module PDF indisponible'); return; }
+  const c = cls(), D = S.settings.total, TXL = txs(c);
+  const doc = new jspdf.jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, M = 14, navy = [2, 36, 98], blue = [5, 97, 209], orange = [242, 150, 70], grey = [91, 107, 134];
+  let y = 0;
+  const T = (txt, x, yy, o = {}) => doc.text(pdfSafe(txt), x, yy, o);
+  const need = h => { if (y + h > 285) { doc.addPage(); y = 16; } };
+  groups.forEach((g, gi) => {
+    if (gi) doc.addPage();
+    y = 16;
+    const mem = tgMembers(c, g, true), all = c.passages.filter(p => p.les === 'tg' && (p.grp || c.tg[p.d]) === g);
+    doc.setFillColor(...navy); doc.rect(0, 0, W, 26, 'F');
+    doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(17); T(`Groupe ${g} - Caractéristiques de la transmission`, M, 12);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); T(`${c.name} · Zones Relais · récapitulatif au ${new Date().toLocaleDateString('fr-FR')} · relais de ${D} m, zone de ${S.settings.zt} m`, M, 20);
+    y = 34; doc.setTextColor(...navy); doc.setFont('helvetica', 'bold'); doc.setFontSize(11); T('Coureurs du groupe', M, y);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); y += 6;
+    T(mem.map(s => { const b = best50(c, s.id); return `${dnStudent(c, s)} (${b != null ? fmt(b) + ' s au 50 m' : 'pas de 50 m'})`; }).join('   ·   '), M, y, { maxWidth: W - 2 * M }); y += 8;
+    doc.setTextColor(...grey); doc.setFontSize(9);
+    T('Objectifs : battre la cible (50 m du démarreur + 50 m du relayeur - 0,3 s), obtenir le maximum d\'étoiles, garder les mêmes caractéristiques de transmission.', M, y, { maxWidth: W - 2 * M }); y += 9;
+    const pairs = []; mem.forEach(a => mem.forEach(b => { if (a.id !== b.id) pairs.push([a.id, b.id]); }));
+    pairs.sort((x, z) => pairPass(c, z[0], z[1], all).length - pairPass(c, x[0], x[1], all).length);
+    pairs.forEach(([d, r]) => {
+      const P = pairPass(c, d, r, all).sort((a, b) => a.ts - b.ts), st = pairStats(c, d, r, all), cb = cible100(c, d, r);
+      const ref = bestPass(c, P), mod = st.mod, cons = mod.n >= 2 ? pct(mod.same, mod.n) : null;
+      const rows = P.length + 1, h = 22 + (P.length ? 10 + TXL.length * 5 + rows * 5.5 : 6);
+      need(Math.min(h, 120));
+      doc.setFillColor(238, 244, 252); doc.roundedRect(M, y - 5, W - 2 * M, 9, 2, 2, 'F');
+      doc.setTextColor(...navy); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+      T(`${dn(c, d)}  ->  ${dn(c, r)}`, M + 3, y + 1.5);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...grey);
+      T(`Démarreur -> relayeur · cible ${cb != null ? fmt(cb * D / BASE) + ' s' : '-'}`, W - M - 3, y + 1.5, { align: 'right' }); y += 10;
+      if (!P.length) { doc.setTextColor(...grey); T('Pas encore couru : caractéristiques à définir.', M + 3, y); y += 8; return; }
+      doc.setTextColor(...navy); doc.setFontSize(9.5);
+      T(`${P.length} passage(s) · meilleur temps ${st.best ? fmt(st.best.tEnd) + ' s' : '-'} · meilleur IT ${fit(st.bestIT)} · meilleures étoiles ${st.bestStars ?? '-'}/4 · cible battue ${st.beat}/${st.n}${cons != null ? ` · constance ${cons} %` : ''}`, M + 3, y); y += 6;
+      // réglages conseillés (passage au meilleur IT) et habituels
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(...blue); T('Réglages à reprendre (meilleur passage)', M + 3, y);
+      doc.setTextColor(...orange); T('Réglages habituels', M + 100, y); y += 5;
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30);
+      TXL.forEach(t => {
+        T(`${t.l} : ${ref ? txShow(t, ref.tx[t.k]) : '-'}`, M + 5, y);
+        T(`${mod.tx ? txShow(t, mod.tx[t.k]) : '-'}`, M + 102, y); y += 5;
+      });
+      y += 2;
+      // tableau des passages
+      const cols = [['Date', 22], ['Temps', 16], ['IT', 16], ['Étoiles', 14], ...TXL.map(t => [t.l, Math.max(18, (W - 2 * M - 68) / Math.max(1, TXL.length))])];
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+      const hl = cols.map(([l, w]) => doc.splitTextToSize(pdfSafe(l), w - 1.5)), hh = Math.max(...hl.map(a => a.length)) * 3.2 + 2.5;
+      need(hh + 8);
+      let x = M; doc.setFillColor(...navy); doc.rect(M, y - 4, W - 2 * M, hh, 'F'); doc.setTextColor(255);
+      hl.forEach((lines, j) => { doc.text(lines, x + 1, y - 0.5); x += cols[j][1]; }); y += hh;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+      P.forEach((p, i) => {
+        const it = passIT(c, p), stars = passStars(c, p);
+        const cells = [new Date(p.ts).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' ' + new Date(p.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+          p.fail ? 'raté' : fmt(p.tEnd) + ' s', fit(it), stars != null ? '*'.repeat(stars) : '-', ...TXL.map(t => p.tx ? txShow(t, p.tx[t.k]) : '-')];
+        if (p === ref) doc.setFont('helvetica', 'bold');
+        const cl = cells.map((v, j) => doc.splitTextToSize(pdfSafe(v), cols[j][1] - 1.5)), rh = Math.max(...cl.map(a => a.length)) * 3.3 + 2.2;
+        need(rh);
+        if (i % 2) { doc.setFillColor(246, 249, 253); doc.rect(M, y - 3.6, W - 2 * M, rh, 'F'); }
+        x = M; doc.setTextColor(p === ref ? blue[0] : 30, p === ref ? blue[1] : 30, p === ref ? blue[2] : 30);
+        cl.forEach((lines, j) => { doc.text(lines, x + 1, y); x += cols[j][1]; });
+        doc.setFont('helvetica', 'normal'); y += rh;
+      });
+      y += 5;
+    });
+  });
+  const name = groups.length === 1 ? `Transmission_Groupe${groups[0]}_${safeName(c.name)}.pdf` : `Transmission_groupes_${safeName(c.name)}.pdf`;
+  deliver(doc.output('blob'), name);
 }
 
 /* =====================================================================
@@ -1402,32 +1549,23 @@ $('#sel-clear').onclick = () => { sel = { d: null, r: null }; renderTiles(); };
    ===================================================================== */
 const VID = { stream: null, rec: null, chunks: [], t0: 0, url: null, marks: null, pid: null, busy: false, timer: null };
 const vidOK = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+const vidOn = r => !!(r && S.settings.vid && (r.les === 'tg' ? S.settings.vid.tg : S.settings.vid.rel));
 function paintVidSet() {
-  const on = !!S.settings.video;
-  $('#vid-toggle').textContent = `🎥 Vidéo différée : ${on ? 'oui' : 'non'}`;
-  $('#vid-toggle').classList.toggle('primary', on); $('#vid-toggle').classList.toggle('ghost', !on);
-  $('#vid-delay-l').classList.toggle('hidden', !on);
-  $('#vid-delay').value = String(S.settings.vdelay || 5);
+  $('#vid-flag-rel').classList.toggle('hidden', !(S.settings.vid && S.settings.vid.rel));
+  $('#vid-flag-tg').classList.toggle('hidden', !(S.settings.vid && S.settings.vid.tg));
 }
-$('#vid-toggle').onclick = () => {
-  if (!S.settings.video && !vidOK()) { toast('Vidéo indisponible sur cet appareil'); return; }
-  S.settings.video = !S.settings.video; save(); if (!S.settings.video) vidOff(); paintVidSet();
-  if (S.settings.video) toast('La tablette filmera chaque relais puis le rejouera');
-};
-$('#vid-delay').onchange = e => { S.settings.vdelay = +e.target.value; save(); };
 async function vidStart() {
-  if (!S.settings.video || !vidOK()) return;
+  if (!vidOn(run) || !vidOK()) return;
   try {
     if (!VID.stream) VID.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
     const pv = $('#c-preview'); if (pv.srcObject !== VID.stream) { pv.srcObject = VID.stream; pv.play().catch(() => {}); }
     $('#c-camstate').textContent = run && run.t0 !== null ? '● enregistrement' : 'prête : l\'enregistrement démarre au top « Début »';
   } catch (e) {
     $('#c-camstate').textContent = 'caméra refusée ou indisponible : vidéo désactivée';
-    S.settings.video = false; save();
   }
 }
 function vidRecord() {
-  if (!S.settings.video || !VID.stream) return;
+  if (!vidOn(run) || !VID.stream) return;
   vidDiscard();
   const mime = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
   try { VID.rec = new MediaRecorder(VID.stream, mime ? { mimeType: mime } : undefined); } catch (e) { return; }
@@ -1531,8 +1669,8 @@ function renderChrono() {
   if (!run) { show('tiles'); return; }
   paintPair();
   if (run.les === 'tg') { $('#tb-main').textContent = '③ Travail de groupe'; $('#tb-sub').textContent = `Groupe ${run.grp} · chronomètre`; }
-  $('#c-cam').classList.toggle('hidden', !S.settings.video);
-  if (S.settings.video) vidStart();
+  $('#c-cam').classList.toggle('hidden', !vidOn(run));
+  if (vidOn(run)) vidStart();
   const st = step();
   $$('.cbtn').forEach(b => { const k = +b.dataset.step; b.classList.toggle('next', k === st); b.classList.toggle('done', k < st); b.disabled = k !== st; });
   $('#c-fail').disabled = run.t0 === null;
@@ -1649,7 +1787,7 @@ function critHTML(c, p, compact) {
 function missing(p) {
   const m = crits(cls()).filter(cr => p.c[cr.k] === undefined).map(cr => cr.k);
   if (p.fail === '') m.unshift('fail');
-  if (p.les === 'tg') TX.forEach(t => { if (!p.tx || p.tx[t.k] == null) m.push('tx'); });
+  if (p.les === 'tg') txs(cls()).forEach(t => { if (!p.tx || p.tx[t.k] == null) m.push('tx'); });
   return m;
 }
 function flashMissing() {
@@ -1851,13 +1989,13 @@ $('#exp-xlsx').onclick = () => {
       r.total != null ? Math.round(r.total * 100) / 100 : '', r.complete ? 'oui' : 'non']));
   const rel = [['Date', 'Tablette', 'Démarreur – Nom', 'Démarreur – Prénom', 'Relayeur – Nom', 'Relayeur – Prénom', 'Distance (m)', 'Statut', 'Cause',
     'Temps (s)', 'Cible (s)', 'IT équiv. 100 m (s)', 'Étoiles', 'Entrée Zt (s)', 'Temps Zt (s)', 'V Zt (m/s)', 'V hors Zt (m/s)', 'Écart Zt (%)', ...crits(c).map(cr => cr.l),
-    'Leçon', 'Groupe de travail', ...TX.map(t => t.l + (t.unit ? ` (${t.unit})` : ''))]]
+    'Leçon', 'Groupe de travail', ...txs(c).map(t => t.l + (t.unit ? ` (${t.unit})` : ''))]]
     .concat([...F.rel].sort((a, b) => a.ts - b.ts).map(p => [
       new Date(p.ts).toLocaleString('fr-FR'), p.tablet || '', ...nm(p.d, p.dSnap), ...nm(p.r, p.rSnap), distOf(p),
       p.fail ? 'Raté' : 'Réussi', p.fail ? (FAILS.find(f => f.k === p.fail) || {}).label : '',
       sec(p.tEnd), sec(p.tgt), passIT(c, p) ?? '', passStars(c, p) ?? '', sec(p.tIn), sec(p.tZt), p.vZt ?? '', p.vR ?? '', p.gap ?? '',
       ...crits(c).map(cr => critText(cr, p.c[cr.k])),
-      p.les === 'tg' ? 'Travail de groupe' : 'Relais à deux', p.grp || '', ...TX.map(t => p.tx ? txVal(t, p.tx[t.k]) : '')]));
+      p.les === 'tg' ? 'Travail de groupe' : 'Relais à deux', p.grp || '', ...txs(c).map(t => p.tx ? txVal(t, p.tx[t.k]) : '')]));
   const s50 = [['Date', 'Tablette', 'Nom', 'Prénom', 'Temps 50 m (s)']]
     .concat([...F.spr].sort((a, b) => a.ts - b.ts).map(s => [new Date(s.ts).toLocaleString('fr-FR'), s.tablet || '', ...nm(s.sid, s.snap), sec(s.t)]));
   const bil = [['Bilan de classe', c.name], ['Relais', st.N], ['Ratés', st.nFail], ...st.failBy.map(f => ['  ' + f.label, f.n]),

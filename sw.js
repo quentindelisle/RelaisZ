@@ -1,5 +1,5 @@
 // RelaisZ – service worker (cache hors-ligne)
-const CACHE = 'relaisz-v4.7.0';
+const CACHE = 'relaisz-v4.8.0';
 const ASSETS = [
   './',
   './index.html',
@@ -15,7 +15,8 @@ const ASSETS = [
   './lib/qrcode.js',
   './lib/jsQR.js',
   './lib/zxing-reader.js',
-  './lib/zxing_reader.wasm'
+  './lib/zxing_reader.wasm',
+  './lib/jspdf.umd.min.js'
 ];
 
 self.addEventListener('install', e => {
