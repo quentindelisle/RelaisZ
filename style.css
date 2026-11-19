@@ -485,3 +485,8 @@ h2 small{font-weight:500}
 label.check.big{font-size:1.05rem;padding:8px 12px;border:1.5px solid var(--line);border-radius:12px;background:#fff}
 .tg-kpi .btn{margin-right:6px}
 .check.obs{font-size:.8rem;color:var(--mute);white-space:nowrap}
+
+/* v4.9 : temps sur 50 m */
+#p50-table input.t50{width:96px;padding:8px;border:1.5px solid var(--line);border-radius:10px;font:inherit;font-weight:800;text-align:center;color:var(--navy)}
+#p50-table .tries span{display:inline-block;margin:0 3px;color:var(--mute);font-variant-numeric:tabular-nums}
+#p50-table .tries span.best{color:var(--blue2);font-weight:800}

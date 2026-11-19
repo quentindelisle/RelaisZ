@@ -179,6 +179,7 @@ const sexBadge = sx => `<span class="sex ${sx || 'none'}">${sx || '?'}</span>`;
 
 /* ---------------- performances ---------------- */
 function best50(c, sid, list = c.sprints) {
+  if (c.man50 && c.man50[sid] != null) return c.man50[sid];      // temps saisi par le prof : prioritaire
   const t = list.filter(s => s.sid === sid && s.t != null).map(s => s.t);
   if (list === c.sprints && c.b50ext && c.b50ext[sid] != null) t.push(c.b50ext[sid]); // meilleur temps reçu du prof
   return t.length ? Math.min(...t) : null;
@@ -258,13 +259,13 @@ setInterval(updateRec, 1000);
 /* =====================================================================
    NAVIGATION · interface prof / élève
    ===================================================================== */
-const PROF_ONLY = ['menu', 'classes', 'params', 'groupes', 'tgroupes', 'bilan', 'appel'];
+const PROF_ONLY = ['perf50', 'menu', 'classes', 'params', 'groupes', 'tgroupes', 'bilan', 'appel'];
 const TITLES = {
   role: ['Zones Relais', 'Choix du rôle de la tablette'], menu: ['Espace enseignant', ''], eleve: ['Tablette élève', ''],
   classes: ['Classes', 'Import et choix de la classe'], params: ['Paramètres de la course', 'Distances, récupération, critères'],
   groupes: ['Groupes', 'Une tablette par groupe pour le relais'], send: ['Envoyer', ''], recv: ['Recevoir', ''],
   group: ['Élèves de la tablette', '50 m'], sprint: ['① 50 m départ arrêté', ''], sprun: ['① 50 m', 'Chronomètre'],
-  appel: ['Appel', 'Présents et absents du jour'],
+  appel: ['Appel', 'Présents et absents du jour'], perf50: ['Temps sur 50 m', 'Correction manuelle'],
   tgroupes: ['Groupes de travail', 'Glisser les élèves dans les groupes (3 ou 4)'], tg: ['③ Travail de groupe', ''],
   tiles: ['② Relais', ''], chrono: ['② Relais', 'Chronomètre'], eval: ['② Relais', 'Critères du passage'], bilan: ['Bilan chiffré', '']
 };
@@ -274,7 +275,7 @@ function show(v) {
   if (!S.mode) v = 'role';
   else if (S.pending && v !== 'eval') v = 'eval';
   else if (!isProf() && PROF_ONLY.includes(v)) v = 'eleve';
-  if (['tiles', 'bilan', 'group', 'sprint', 'groupes', 'params', 'tg', 'tgroupes', 'appel'].includes(v) && !cls()) { toast(isProf() ? 'Importez ou choisissez une classe' : 'Recevez d\'abord la séance (QR du prof)'); v = isProf() ? 'classes' : 'eleve'; }
+  if (['tiles', 'bilan', 'group', 'sprint', 'groupes', 'params', 'tg', 'tgroupes', 'appel', 'perf50'].includes(v) && !cls()) { toast(isProf() ? 'Importez ou choisissez une classe' : 'Recevez d\'abord la séance (QR du prof)'); v = isProf() ? 'classes' : 'eleve'; }
   if (view === 'recv' && v !== 'recv') stopScan();
   if (!['tiles', 'tg', 'chrono', 'eval'].includes(v)) vidOff();
   if (view === 'send' && v !== 'send') { clearInterval(qrTimer); $('#send-qr').innerHTML = ''; }
@@ -288,7 +289,7 @@ function show(v) {
   renderTop();
   ({ menu: renderMenu, eleve: renderEleve, classes: renderClasses, params: renderParams, groupes: renderGroupes,
      send: renderSend, recv: renderRecv, group: renderGroup, sprint: renderSprintTiles, sprun: renderSprun, tiles: renderTiles,
-     chrono: renderChrono, eval: renderEval, bilan: renderBilan, tg: renderTg, tgroupes: renderTgroupes, appel: renderAppel }[v] || (() => {}))();
+     chrono: renderChrono, eval: renderEval, bilan: renderBilan, tg: renderTg, tgroupes: renderTgroupes, appel: renderAppel, perf50: renderPerf50 }[v] || (() => {}))();
   updateRec();
   window.scrollTo(0, 0);
 }
@@ -374,7 +375,8 @@ function renderMenu() {
       `<button class="tile-btn" data-go="params"><span>⚙︎</span>Paramètres & critères</button>`, true) +
     step('1', '50 m départ arrêté · tablettes élèves', `Envoyez la séance aux tablettes, les élèves chronomètrent leurs 50 m, puis récupérez les QR. <b>${n50}/${c.students.length}</b> élèves chronométrés${tabs ? ` · ${tabs} tablette(s) reçue(s)` : ''}.`,
       `<button class="tile-btn blue" data-go="send-s"><span>📤</span>Envoyer la séance</button>
-       <button class="tile-btn" data-go="recv-r"><span>📥</span>Récupérer les 50 m</button>`, n50 > 0) +
+       <button class="tile-btn" data-go="recv-r"><span>📥</span>Récupérer les 50 m</button>
+       <button class="tile-btn" data-go="perf50"><span>✏️</span>Voir / corriger les 50 m</button>`, n50 > 0) +
     step('2', 'Faire les groupes', c.tgN ? `<b>${c.tgN} groupes</b> validés (${nGrp} élèves). Les mêmes groupes servent au relais à deux et au travail de groupe. Envoyez-les : chaque tablette coche le ou les groupes qu'elle suit.` : 'Groupes par cliquer-glisser, ou proposés d\'après les 50 m (niveaux proches, mélangés ou aléatoires, mixité F/G). Ils servent au relais à deux et au travail de groupe.',
       `<button class="tile-btn" data-go="tgroupes"><span>👥</span>Faire les groupes</button>
        <button class="tile-btn blue" data-go="send-s" ${c.tgN ? '' : 'disabled'}><span>📤</span>Envoyer les groupes</button>`, c.tgN > 0) +
@@ -432,7 +434,7 @@ function buildS(c) {
     txc: txAll(c),
     crit: crits(c).map(x => [x.k, x.l, ctype(x), x.o || [], x.ord ? 1 : 0]), ng: 0,
     tgN: c.tgN || 0, abs: { day: today(), ids: absIds(c).map(id => c.students.findIndex(s => s.id === id)).filter(i => i >= 0) },
-    st: c.students.map(s => [s.nom, s.prenom, s.sexe || '', best50(c, s.id), 0, c.tgN ? (c.tg[s.id] || 0) : 0]) };
+    st: c.students.map(s => [s.nom, s.prenom, s.sexe || '', best50(c, s.id), 0, c.tgN ? (c.tg[s.id] || 0) : 0, c.man50 && c.man50[s.id] != null ? 1 : 0]) };
 }
 function applyS(p) {
   if (!p || p.a !== APP || p.t !== 'S') throw new Error('Ce QR n\'est pas une séance Zones Relais');
@@ -448,6 +450,7 @@ function applyS(p) {
   p.st.forEach(([nom, prenom, , , , tg]) => { if (tg) c.tg[keyOf(nom, prenom)] = tg; });
   c.myTg = tgChanged ? [] : (c.myTg || []).filter(g => g <= c.tgN);
   if (p.abs) c.absent = { day: p.abs.day, ids: p.abs.ids.map(i => p.st[i]).filter(Boolean).map(([n, pr]) => keyOf(n, pr)) };
+  c.man50 = {}; p.st.forEach(([nom, prenom, , b, , , man]) => { if (man && b != null) c.man50[keyOf(nom, prenom)] = b; });
   c.b50ext = {}; c.grp = {};
   p.st.forEach(([nom, prenom, , b, g]) => { const id = keyOf(nom, prenom); if (b != null) c.b50ext[id] = b; if (g) c.grp[id] = g; });
   const changed = c.ng !== p.ng;
@@ -696,6 +699,37 @@ function renderClasses() {
     S.classes = S.classes.filter(x => x.id !== c.id); if (S.cur === c.id) S.cur = S.classes[0]?.id || null;
     save(); show('classes');
   });
+}
+
+/* =====================================================================
+   PROF : temps sur 50 m (voir / corriger)
+   ===================================================================== */
+function parseTime(v) { const x = parseFloat(String(v).trim().replace(',', '.').replace(/[^\d.]/g, '')); return isFinite(x) && x > 3 && x < 30 ? Math.round(x * 1000) : null; }
+function renderPerf50() {
+  const c = cls(); c.man50 = c.man50 || {};
+  const rows = [...c.students].sort(byFirst).map(s => {
+    const tries = c.sprints.filter(x => x.sid === s.id && x.t != null).sort((a, b) => a.ts - b.ts);
+    const meas = tries.length ? Math.min(...tries.map(x => x.t)) : null, man = c.man50[s.id], used = best50(c, s.id), pts = ptsFrom(B_IND, s.sexe, used);
+    return `<tr class="${isAbs(c, s.id) ? 'none' : ''}"><td class="name">${esc(dnStudent(c, s))}${isAbs(c, s.id) ? ' <small>absent</small>' : ''}</td><td>${sexBadge(s.sexe)}</td>
+      <td class="tries">${tries.map(x => `<span class="${x.t === meas ? 'best' : ''}">${fmt(x.t)}</span>`).join(' ') || '<span class="meta">aucun</span>'}</td>
+      <td>${meas != null ? fmt(meas) + ' s' : '–'}</td>
+      <td><input class="t50" type="text" inputmode="decimal" data-p50="${esc(s.id)}" value="${used != null ? fmt(used) : ''}" placeholder="ex. 7,45"></td>
+      <td>${man != null ? `<span class="tag st">saisi</span> <button class="btn ghost small" data-p50r="${esc(s.id)}" title="Revenir au temps mesuré">↺</button>` : used != null ? '<span class="meta">mesuré</span>' : ''}</td>
+      <td class="pts">${pts != null ? fpt(pts) : '–'}</td></tr>`;
+  }).join('');
+  $('#p50-table').innerHTML = `<tr><th style="text-align:left">Élève</th><th>Sexe</th><th>Essais</th><th>Meilleur mesuré</th><th>Temps retenu (s)</th><th></th><th>Vit. indiv. /3</th></tr>${rows}`;
+  $$('#p50-table [data-p50]').forEach(inp => {
+    const commit = () => {
+      const id = inp.dataset.p50, raw = inp.value.trim(), cur = best50(c, id);
+      if (raw === '') { if (c.man50[id] != null) { delete c.man50[id]; save(); toast('Temps saisi retiré'); } renderPerf50(); return; }
+      const ms = parseTime(raw);
+      if (ms == null) { toast('Temps invalide (ex. 7,45)'); inp.value = cur != null ? fmt(cur) : ''; return; }
+      if (ms === cur) return;
+      c.man50[id] = ms; save(); toast(`${dn(c, id)} : ${fmt(ms)} s retenu · renvoyez la séance aux tablettes`); renderPerf50();
+    };
+    inp.onchange = commit; inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); };
+  });
+  $$('#p50-table [data-p50r]').forEach(b => b.onclick = () => { delete c.man50[b.dataset.p50r]; save(); renderPerf50(); });
 }
 
 /* =====================================================================
@@ -1306,7 +1340,7 @@ function tgPdf(groups) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); y += 6;
     T(mem.map(s => { const b = best50(c, s.id); return `${dnStudent(c, s)} (${b != null ? fmt(b) + ' s au 50 m' : 'pas de 50 m'})`; }).join('   ·   '), M, y, { maxWidth: W - 2 * M }); y += 8;
     doc.setTextColor(...grey); doc.setFontSize(9);
-    T('Objectifs : battre la cible (50 m du démarreur + 50 m du relayeur - 0,3 s), obtenir le maximum d\'étoiles, garder les mêmes caractéristiques de transmission.', M, y, { maxWidth: W - 2 * M }); y += 9;
+    T('Objectifs : battre la cible (50 m du démarreur + 50 m du relayeur - 0,3 s), obtenir le maximum d\'étoiles, garder les mêmes caractéristiques de transmission.', M, y, { maxWidth: W - 2 * M }); y += 14;
     const pairs = []; mem.forEach(a => mem.forEach(b => { if (a.id !== b.id) pairs.push([a.id, b.id]); }));
     pairs.sort((x, z) => pairPass(c, z[0], z[1], all).length - pairPass(c, x[0], x[1], all).length);
     pairs.forEach(([d, r]) => {
