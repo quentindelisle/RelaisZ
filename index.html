@@ -104,6 +104,21 @@
     <h2>Barèmes</h2>
     <div class="card" id="bareme-box"></div>
 
+    <h2>Supprimer des performances <small id="del-class"></small></h2>
+    <div class="card">
+      <div class="del-grid">
+        <div><b>Performances individuelles (50 m)</b><span class="meta" id="del-n50"></span>
+          <button class="btn danger-ghost" data-bulk="spr">Supprimer tous les 50 m</button></div>
+        <div><b>Performances en relais</b><span class="meta" id="del-nrel"></span>
+          <div class="row gap wrap">
+            <button class="btn danger-ghost" data-bulk="rel">Relais à deux</button>
+            <button class="btn danger-ghost" data-bulk="tg">Travail de groupe</button>
+            <button class="btn danger-ghost" data-bulk="allrel">Tous les relais</button></div></div>
+      </div>
+      <label class="inline" style="margin-top:10px">Séance <select id="del-day"></select></label>
+      <p class="hint">Suppression définitive pour la classe ouverte (exportez une sauvegarde avant si besoin). Les performances supprimées ne reviennent pas si une tablette élève renvoie d'anciens résultats. Pour effacer un seul temps, utilisez la 🗑 de l'élève ou le bilan.</p>
+    </div>
+
     <h2>Sauvegarde</h2>
     <div class="card row gap wrap">
       <button id="bk-export" class="btn ghost">Exporter une sauvegarde complète (.json)</button>
@@ -350,7 +365,7 @@
     <div id="b-hist50" class="list"></div>
   </section>
 
-  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v4.6.1 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
+  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v4.7 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
 </main>
 
 <div id="toast" class="toast"></div>

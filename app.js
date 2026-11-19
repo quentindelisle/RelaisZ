@@ -732,6 +732,7 @@ function renderParams() {
   const opts = [120, 150, 180, 210, 240, 270, 300];
   $('#set-rec').innerHTML = opts.map(s => `<option value="${s}" ${s === S.settings.rec ? 'selected' : ''}>${mmss(s * 1000)}${s === 210 ? ' (recommandé)' : ''}</option>`).join('');
   $('#crit-class').textContent = '· ' + c.name;
+  paintBulk();
   critDraft = crits(c).map(x => ({ ...x }));
   paintCrit();
   renderBareme();
@@ -810,6 +811,33 @@ function renderBareme() {
       <tr>${DEGREES.map(d => d.lv.map(v => `<td class="lv r${d.n}">${fpt(v)}</td>`).join('')).join('')}</tr></table></div>
     <p class="hint">Niveau dans le degré proposé selon le % de critères qualitatifs réussis ; 6 seulement avec 16 ★ obtenues sur 4 courses. Avec 2 ou 3 courses, total d'étoiles extrapolé sur 4.</p>`;
 }
+/* ---- suppression groupée des performances (classe ouverte) ---- */
+function paintBulk() {
+  const c = cls(); if (!c) return;
+  const keep = $('#del-day').value || 'all';
+  const days = [...new Set([...c.sprints, ...c.passages].map(x => dayOf(x.ts)))].sort().reverse();
+  $('#del-day').innerHTML = `<option value="all">Toutes les séances</option>` + days.map(d => `<option value="${d}">${dayLabel(d)}</option>`).join('');
+  if ([...$('#del-day').options].some(o => o.value === keep)) $('#del-day').value = keep;
+  const d = $('#del-day').value, inDay = x => d === 'all' || dayOf(x.ts) === d;
+  const R = c.passages.filter(inDay);
+  $('#del-class').textContent = '· ' + c.name;
+  $('#del-n50').textContent = ` · ${c.sprints.filter(inDay).length} chrono(s)`;
+  $('#del-nrel').textContent = ` · ${R.filter(p => p.les !== 'tg').length} relais à deux · ${R.filter(p => p.les === 'tg').length} travail de groupe`;
+}
+$('#del-day').onchange = paintBulk;
+$$('[data-bulk]').forEach(b => b.onclick = () => {
+  const c = cls(), k = b.dataset.bulk, d = $('#del-day').value || 'all', inDay = x => d === 'all' || dayOf(x.ts) === d;
+  const pick = k === 'spr' ? c.sprints.filter(inDay)
+    : c.passages.filter(p => inDay(p) && (k === 'allrel' || (k === 'tg' ? p.les === 'tg' : p.les !== 'tg')));
+  const what = { spr: 'chrono(s) sur 50 m', rel: 'relais à deux', tg: 'passage(s) du travail de groupe', allrel: 'relais (toutes leçons)' }[k];
+  if (!pick.length) { toast('Rien à supprimer'); return; }
+  if (!confirm(`Supprimer définitivement ${pick.length} ${what}${d !== 'all' ? ' de la séance du ' + dayLabel(d) : ''} pour « ${c.name} » ?`)) return;
+  if (!confirm('Confirmer la suppression ? Cette action ne peut pas être annulée.')) return;
+  pick.forEach(x => delRun(c, x.id, true));
+  if (k === 'spr' && d === 'all') c.b50ext = {};
+  save(); paintBulk(); toast(`${pick.length} ${what} supprimé(s)`);
+});
+
 $('#bk-export').onclick = () => {
   deliver(new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' }), `ZonesRelais_sauvegarde_${safeName(tabletName())}_${dayOf(Date.now())}.json`);
 };

@@ -1,5 +1,5 @@
 // RelaisZ – service worker (cache hors-ligne)
-const CACHE = 'relaisz-v4.6.1';
+const CACHE = 'relaisz-v4.7.0';
 const ASSETS = [
   './',
   './index.html',
