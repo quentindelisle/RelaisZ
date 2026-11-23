@@ -490,3 +490,27 @@ label.check.big{font-size:1.05rem;padding:8px 12px;border:1.5px solid var(--line
 #p50-table input.t50{width:96px;padding:8px;border:1.5px solid var(--line);border-radius:10px;font:inherit;font-weight:800;text-align:center;color:var(--navy)}
 #p50-table .tries span{display:inline-block;margin:0 3px;color:var(--mute);font-variant-numeric:tabular-nums}
 #p50-table .tries span.best{color:var(--blue2);font-weight:800}
+
+/* =================== v5.0 : leçon d'évaluation =================== */
+.evl-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.evl-step{display:flex;align-items:center;gap:12px;background:#fff;border-radius:16px;padding:12px 14px;box-shadow:var(--shadow);border-left:6px solid var(--line)}
+.evl-step.ok{border-left-color:var(--ok)}
+.evl-step>div{flex:1;display:flex;flex-direction:column}
+.evl-n{width:38px;height:38px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;flex:none}
+.evl-step.ok .evl-n{background:var(--ok)}
+.evl-actions{margin:12px 0}
+.evl-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(460px,1fr));gap:10px}
+@media (max-width:700px){.evl-groups{grid-template-columns:1fr}}
+.evl-mem{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:8px}
+.evl-mem .tile{min-height:88px}
+.evl-mem .tile.done4{background:#effaf2}
+.evl-mem .count{font-size:.76rem}
+.evl-hist{margin-top:10px;border-top:1px solid var(--line)}
+.evl-row{display:grid;grid-template-columns:1fr 70px 100px 80px 60px 44px;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);font-size:.88rem}
+.evl-row .st{color:var(--orange);font-weight:800}
+.evl-entry{border:3px solid var(--orange);position:sticky;top:calc(env(safe-area-inset-top) + 64px);z-index:6}
+.evl-chrono{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;align-items:center;margin:10px 0}
+.clock.small{font-size:clamp(44px,8vw,80px);margin:0}
+.evl-chrono .cbtn{min-height:96px}
+.evl-chrono .cbtn[data-step="3"].next{background:linear-gradient(180deg,#f29646,#e0701f)}
+.evl-back{background:var(--orange)!important;border-color:var(--orange)!important}

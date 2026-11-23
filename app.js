@@ -55,7 +55,9 @@ function starsFromIT(it) { const r = Math.round(it * 10) / 10; return r <= 0 ? 4
 function etNote(stars, rate, ov, real16) {
   const deg = DEGREES.find(d => stars >= d.min && stars <= d.max) || DEGREES[0];
   const allowed = deg.lv.filter(v => !(v === 6 && !(stars === 16 && real16)));
-  const idx = Math.min(allowed.length - 1, Math.floor((rate || 0) * allowed.length));
+  const lo = Math.max(1, deg.min), pos = deg.max > lo ? (stars - lo) / (deg.max - lo) : 1;
+  const idx = rate == null ? Math.max(0, Math.min(allowed.length - 1, Math.round(pos * (allowed.length - 1))))   // pas de critères (évaluation) : position dans le degré selon les étoiles
+    : Math.min(allowed.length - 1, Math.floor(rate * allowed.length));
   const auto = allowed[idx], manual = ov != null && allowed.includes(ov);
   return { deg, allowed, auto, note: manual ? ov : auto, manual };
 }
@@ -259,13 +261,13 @@ setInterval(updateRec, 1000);
 /* =====================================================================
    NAVIGATION · interface prof / élève
    ===================================================================== */
-const PROF_ONLY = ['perf50', 'menu', 'classes', 'params', 'groupes', 'tgroupes', 'bilan', 'appel'];
+const PROF_ONLY = ['evl', 'perf50', 'menu', 'classes', 'params', 'groupes', 'tgroupes', 'bilan', 'appel'];
 const TITLES = {
   role: ['Zones Relais', 'Choix du rôle de la tablette'], menu: ['Espace enseignant', ''], eleve: ['Tablette élève', ''],
   classes: ['Classes', 'Import et choix de la classe'], params: ['Paramètres de la course', 'Distances, récupération, critères'],
   groupes: ['Groupes', 'Une tablette par groupe pour le relais'], send: ['Envoyer', ''], recv: ['Recevoir', ''],
   group: ['Élèves de la tablette', '50 m'], sprint: ['① 50 m départ arrêté', ''], sprun: ['① 50 m', 'Chronomètre'],
-  appel: ['Appel', 'Présents et absents du jour'], perf50: ['Temps sur 50 m', 'Correction manuelle'],
+  appel: ['Appel', 'Présents et absents du jour'], perf50: ['Temps sur 50 m', 'Correction manuelle'], evl: ['Leçon d\'évaluation', 'Appel · 50 m · groupes · passages'],
   tgroupes: ['Groupes de travail', 'Glisser les élèves dans les groupes (3 ou 4)'], tg: ['③ Travail de groupe', ''],
   tiles: ['② Relais', ''], chrono: ['② Relais', 'Chronomètre'], eval: ['② Relais', 'Critères du passage'], bilan: ['Bilan chiffré', '']
 };
@@ -275,7 +277,7 @@ function show(v) {
   if (!S.mode) v = 'role';
   else if (S.pending && v !== 'eval') v = 'eval';
   else if (!isProf() && PROF_ONLY.includes(v)) v = 'eleve';
-  if (['tiles', 'bilan', 'group', 'sprint', 'groupes', 'params', 'tg', 'tgroupes', 'appel', 'perf50'].includes(v) && !cls()) { toast(isProf() ? 'Importez ou choisissez une classe' : 'Recevez d\'abord la séance (QR du prof)'); v = isProf() ? 'classes' : 'eleve'; }
+  if (['tiles', 'bilan', 'group', 'sprint', 'groupes', 'params', 'tg', 'tgroupes', 'appel', 'perf50', 'evl'].includes(v) && !cls()) { toast(isProf() ? 'Importez ou choisissez une classe' : 'Recevez d\'abord la séance (QR du prof)'); v = isProf() ? 'classes' : 'eleve'; }
   if (view === 'recv' && v !== 'recv') stopScan();
   if (!['tiles', 'tg', 'chrono', 'eval'].includes(v)) vidOff();
   if (view === 'send' && v !== 'send') { clearInterval(qrTimer); $('#send-qr').innerHTML = ''; }
@@ -289,12 +291,14 @@ function show(v) {
   renderTop();
   ({ menu: renderMenu, eleve: renderEleve, classes: renderClasses, params: renderParams, groupes: renderGroupes,
      send: renderSend, recv: renderRecv, group: renderGroup, sprint: renderSprintTiles, sprun: renderSprun, tiles: renderTiles,
-     chrono: renderChrono, eval: renderEval, bilan: renderBilan, tg: renderTg, tgroupes: renderTgroupes, appel: renderAppel, perf50: renderPerf50 }[v] || (() => {}))();
+     chrono: renderChrono, eval: renderEval, bilan: renderBilan, tg: renderTg, tgroupes: renderTgroupes, appel: renderAppel, perf50: renderPerf50, evl: renderEvl }[v] || (() => {}))();
   updateRec();
   window.scrollTo(0, 0);
 }
+let evlFlow = false;   // on vient de la leçon d'évaluation : retour direct après l'appel, les 50 m, les groupes
 function renderTop() {
-  const homeBtn = !['menu', 'eleve', 'role'].includes(view) ? `<button class="btn small tb-btn" data-nav="home">⌂ Accueil</button>` : '';
+  const back = evlFlow && ['appel', 'perf50', 'tgroupes'].includes(view) ? `<button class="btn small tb-btn evl-back" data-go="evl">↩ Leçon d'évaluation</button>` : '';
+  const homeBtn = back + (!['menu', 'eleve', 'role'].includes(view) ? `<button class="btn small tb-btn" data-nav="home">⌂ Accueil</button>` : '');
   $('#tb-right').innerHTML = S.mode ? homeBtn + `<div class="role-sw" role="group" aria-label="Interface">
     <button class="${isProf() ? '' : 'on'}" data-sw="eleve"><span>🧒</span><b>Élève</b></button>
     <button class="${isProf() ? 'on' : ''}" data-sw="prof"><span>🧑‍🏫</span><b>Prof</b></button></div>` : '';
@@ -307,7 +311,7 @@ function leaveOk() {
 }
 document.addEventListener('click', e => {
   const nav = e.target.closest('[data-nav]'), sw = e.target.closest('[data-sw]'), go = e.target.closest('[data-go]');
-  if (nav) { if (leaveOk()) show(home()); }
+  if (nav) { if (leaveOk()) { evlFlow = false; show(home()); } }
   else if (sw) {
     const to = sw.dataset.sw; if (to === S.mode) return;
     if (!leaveOk()) return;
@@ -329,6 +333,7 @@ function openGo(g) {
   else if (g === 'recv-s') { recvKind = 'S'; show('recv'); }
   else if (g === 'tiles') { const c = cls(); if (c && !isProf() && c.tgN && !c.myTg.length) { show('eleve'); toast('Cochez d\'abord vos groupes'); } else show('tiles'); }
   else if (g === 'groupes') show('tgroupes');
+  else if (g === 'evl') { evlFlow = true; show('evl'); }
   else if (g === 'tg') { const c = cls(); if (c && !isProf() && !c.myTg.length) { show('eleve'); toast('Choisissez d\'abord votre groupe de travail'); } else show('tg'); }
   else if (g === 'bilan-tg') { $('#b-les').value = 'tg'; show('bilan'); setTimeout(() => { const e = $('#b-tg'); if (e) e.scrollIntoView({ behavior: 'smooth' }); }, 200); }
   else show(g);
@@ -386,6 +391,8 @@ function renderMenu() {
     step('4', 'Leçon Travail de groupe', `Mêmes groupes que l'étape 2. Les binômes du groupe sont proposés, les élèves choisissent ceux qu'ils courent ; caractéristiques de la transmission notées à chaque passage. <b>${c.passages.filter(p => p.les === 'tg').length}</b> passages reçus.`,
       `<button class="tile-btn" data-go="recv-r"><span>📥</span>Récupérer</button>
        <button class="tile-btn orange" data-go="bilan-tg"><span>📊</span>Bilan + PDF par groupe</button>`, c.passages.some(p => p.les === 'tg')) +
+    step('5', 'Leçon d\'évaluation', `Appel, temps sur 50 m (mémorisés ou saisis), groupes, puis passages en ordre libre saisis sur cette tablette ou sur la fiche PDF. Ni critères ni vidéo. <b>${c.passages.filter(p => p.les === 'ev').length}</b> passages d'évaluation.`,
+      `<button class="tile-btn orange" data-go="evl"><span>🏁</span>Ouvrir la leçon d'évaluation</button>`, c.passages.some(p => p.les === 'ev')) +
     `<div class="step local"><div class="step-n">⏱</div><div class="step-body"><h3>Chronométrer sur cette tablette</h3>
       <div class="step-btns"><button class="tile-btn" data-go="sprint"><span>①</span>50 m</button><button class="tile-btn" data-go="tiles"><span>②</span>Relais</button><button class="tile-btn" data-go="tg"><span>③</span>Travail de groupe</button></div></div></div>`;
 }
@@ -471,7 +478,7 @@ function buildR(c) {
     s: mineS.map(s => [s.id, ix(s.sid), s.t, s.ts, s.endAt || null]),
     p: mineP.map(p => [p.id, p.ts, p.endAt || null, ix(p.d), ix(p.r), p.tIn, p.tZt, p.tEnd, p.cible ?? null,
       p.fail ? FAILS.findIndex(f => f.k === p.fail) + 1 : 0, ck.map(k => { const v = p.c[k]; return v === true ? 1 : v === false ? 0 : v ?? null; }),
-      p.cfg.total, p.cfg.zt, p.les === 'tg' ? 1 : 0, p.grp || 0, p.tx ? tk.map(k => p.tx[k] ?? null) : null]) };
+      p.cfg.total, p.cfg.zt, p.les === 'tg' ? 1 : p.les === 'ev' ? 2 : 0, p.grp || 0, p.tx ? tk.map(k => p.tx[k] ?? null) : null]) };
 }
 function mergeR(R) {
   if (!R || R.a !== APP || R.t !== 'R') throw new Error('Ce QR n\'est pas un envoi de résultats Zones Relais');
@@ -502,7 +509,7 @@ function mergeR(R) {
     });
     c.passages.push(finalize({ id, ts, endAt, tablet: R.tab, local: false, d, r, dSnap: snap(c, d), rSnap: snap(c, r),
       tIn, tZt, tEnd, cible, fail: fc ? FAILS[fc - 1].k : null, c: cm, cfg: { total, zt },
-      les: les ? 'tg' : null, grp: grp || null, tx: tx ? Object.fromEntries((R.tk || ['md', 'mr', 'sens', 'rep', 'mom']).map((k, j) => [k, tx[j]]).filter(([, v]) => v != null)) : undefined }));
+      les: les === 2 ? 'ev' : les ? 'tg' : null, grp: grp || null, tx: tx ? Object.fromEntries((R.tk || ['md', 'mr', 'sens', 'rep', 'mom']).map((k, j) => [k, tx[j]]).filter(([, v]) => v != null)) : undefined }));
     np++;
   });
   save();
@@ -702,9 +709,175 @@ function renderClasses() {
 }
 
 /* =====================================================================
+   PROF : LEÇON D'ÉVALUATION
+   1 appel · 2 temps sur 50 m · 3 groupes · 4 passages en ordre libre (saisie tablette ou fiche PDF)
+   Pas de critères ni de vidéo ; au-delà de 4 passages, les meilleurs sont retenus pour l'indice technique.
+   ===================================================================== */
+let evSel = { g: null, d: null, r: null }, evRun = null;
+const evPass = c => c.passages.filter(p => p.les === 'ev');
+function evGroups(c) {
+  const gs = Array.from({ length: c.tgN || 0 }, (_, i) => i + 1).map(g => ({ g, mem: tgMembers(c, g) })).filter(x => x.mem.length);
+  const rest = present(c).filter(s => !c.tg[s.id]).sort(byFirst);
+  if (rest.length) gs.push({ g: 0, mem: rest });
+  return gs;
+}
+function renderEvl() {
+  const c = cls(), np = present(c).length, n50 = present(c).filter(s => best50(c, s.id) != null).length;
+  const appelOk = c.absent && c.absent.day === today(), ng = c.tgN || 0, placed = present(c).filter(s => c.tg[s.id]).length;
+  const st = (n, t, d, btn, ok) => `<div class="evl-step ${ok ? 'ok' : ''}"><span class="evl-n">${ok ? '✓' : n}</span><div><b>${t}</b><span class="meta">${d}</span></div>${btn}</div>`;
+  $('#evl-steps').innerHTML =
+    st(1, 'Appel', appelOk ? `${np} présents, ${absIds(c).length} absent(s)` : 'à faire', `<button class="btn ${appelOk ? 'ghost' : 'primary'} small" data-go="appel">📋 Appel</button>`, appelOk) +
+    st(2, 'Temps sur 50 m', `${n50}/${np} présents ont un temps (mémorisé ou saisi)`, `<button class="btn ${n50 < np ? 'primary' : 'ghost'} small" data-go="perf50">✏️ Saisir / vérifier</button>`, np && n50 === np) +
+    st(3, 'Groupes', ng ? `${ng} groupes · ${placed}/${np} présents placés` : 'à constituer', `<button class="btn ${placed < np ? 'primary' : 'ghost'} small" data-go="tgroupes">👥 Groupes</button>`, ng && placed === np);
+  paintEvlEntry(); paintEvlGroups();
+}
+function evStats(c, sid) {
+  const P = evPass(c).filter(p => p.d === sid || p.r === sid), stars = P.map(p => passStars(c, p)).filter(x => x != null).sort((a, b) => b - a);
+  return { n: P.length, nd: P.filter(p => p.d === sid).length, nr: P.filter(p => p.r === sid).length, best: stars.slice(0, 4) };
+}
+function paintEvlGroups() {
+  const c = cls(), D = S.settings.total, gs = evGroups(c);
+  $('#evl-groups').innerHTML = gs.length ? gs.map(({ g, mem }) => {
+    const P = evPass(c).filter(p => mem.some(s => s.id === p.d) && mem.some(s => s.id === p.r)).sort((a, b) => b.ts - a.ts);
+    return `<div class="card evl-g"><div class="row between wrap"><h3 style="margin:0">${g ? `Groupe ${g}` : 'Sans groupe'}</h3><span class="meta">${P.length} passage${P.length > 1 ? 's' : ''}</span></div>
+      <div class="evl-mem">${mem.map(s => { const e = evStats(c, s.id), b = best50(c, s.id), role = evSel.d === s.id ? 'd' : evSel.r === s.id ? 'r' : '';
+        return `<button class="tile ${role ? 'sel-' + role : ''} ${e.n >= 4 ? 'done4' : ''}" data-ev="${esc(s.id)}" data-evg="${g}">
+          ${role ? `<span class="role ${role} badge">${role.toUpperCase()}</span>` : ''}
+          <span class="top"><span class="nom">${esc(dnStudent(c, s))}</span>${sexBadge(s.sexe)}</span>
+          <span class="perf">${b != null ? `50 m : <b>${fmt(b)} s</b>` : '<span class="flag">pas de 50 m</span>'}</span>
+          <span class="foot"><span class="count">${e.n} passage${e.n > 1 ? 's' : ''}${e.n ? ` (D ${e.nd} · R ${e.nr})` : ''} ${e.best.length ? '· ' + e.best.map(x => '★'.repeat(x)).join(' ') : ''}</span><span class="rec" data-sid="${esc(s.id)}"></span></span>
+        </button>`; }).join('')}</div>
+      ${P.length ? `<div class="evl-hist">${P.map(p => { const it = passIT(c, p), sr = passStars(c, p);
+        return `<div class="evl-row"><span><b>${esc(dn(c, p.d, p.dSnap))}</b> ➜ <b>${esc(dn(c, p.r, p.rSnap))}</b></span>
+          <span>${p.fail ? '<span class="tag ko">raté</span>' : fmt(p.tEnd) + ' s'}</span><span class="meta">cible ${p.tgt != null ? fmt(p.tgt) + ' s' : '–'}</span>
+          <span>IT ${fit(it)}</span><span class="st">${sr != null ? '★'.repeat(sr) : ''}</span><button class="btn danger-ghost small" data-evdel="${p.id}">🗑</button></div>`; }).join('')}</div>` : ''}
+    </div>`;
+  }).join('') : '<div class="empty">Constituez d\'abord les groupes (étape 3).</div>';
+  $$('#evl-groups [data-ev]').forEach(t => t.onclick = () => evPick(t.dataset.ev, +t.dataset.evg));
+  $$('#evl-groups [data-evdel]').forEach(b => b.onclick = () => { if (confirm('Supprimer ce passage ?')) { delRun(c, b.dataset.evdel); paintEvlGroups(); } });
+  updateRec();
+}
+function evPick(id, g) {
+  if (evRun && evRun.t0 != null && evRun.t == null) { toast('Course en cours : arrivée ou annuler'); return; }
+  if (evSel.g !== g) evSel = { g, d: null, r: null };
+  if (evSel.d === id) { evSel.d = evSel.r; evSel.r = null; }
+  else if (evSel.r === id) evSel.r = null;
+  else if (!evSel.d) evSel.d = id;
+  else evSel.r = id;
+  evRun = null;
+  if (evSel.d && evSel.r && !recCheck([evSel.d, evSel.r])) evSel.r = null;
+  paintEvlEntry(); paintEvlGroups();
+  if (evSel.d && evSel.r) $('#evl-entry').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function paintEvlEntry() {
+  const c = cls(), box = $('#evl-entry');
+  if (!(evSel.d && evSel.r)) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  const D = S.settings.total, cb = cible100(c, evSel.d, evSel.r), tgt = cb != null ? cb * D / BASE : null;
+  const t = evRun && evRun.t != null ? evRun.t : null;
+  box.classList.remove('hidden');
+  box.innerHTML = `<div class="row between wrap"><div class="pc-names" style="font-size:1.15rem"><span class="role d">D</span> ${esc(dn(c, evSel.d))} <span class="arrow">➜</span> <span class="role r">R</span> ${esc(dn(c, evSel.r))}
+      <button class="btn ghost small" id="ev-swap">⇄</button></div>
+      <div class="target">🎯 Cible ${D} m : <b>${tgt != null ? fmt(tgt) + ' s' : '–'}</b></div></div>
+    <div class="evl-chrono">
+      <div class="clock small" id="ev-clock">${t != null ? fmt(t) : '0,00'}</div>
+      <button class="cbtn ${!evRun || evRun.t0 == null ? 'next' : 'done'}" data-step="0" id="ev-go" ${evRun && evRun.t0 != null ? 'disabled' : ''}>Départ</button>
+      <button class="cbtn ${evRun && evRun.t0 != null && t == null ? 'next' : ''}" data-step="3" id="ev-stop" ${evRun && evRun.t0 != null && t == null ? '' : 'disabled'}>Arrivée</button>
+    </div>
+    <div class="row gap wrap center">
+      <label class="inline">Temps (s) <input id="ev-time" class="t50" type="text" inputmode="decimal" placeholder="ex. 14,52" value="${t != null ? fmt(t) : ''}"></label>
+      <span id="ev-preview" class="meta"></span>
+      <button class="btn primary big" id="ev-save">Enregistrer</button>
+      <button class="btn fail" id="ev-fail">✗ Passage raté</button>
+      <button class="btn ghost" id="ev-cancel">Annuler</button>
+    </div>
+    <p class="hint center">Chronométrez avec Départ / Arrivée, ou tapez le temps relevé sur la fiche papier.</p>`;
+  const prev = () => {
+    const ms = parseTime($('#ev-time').value, 40);
+    if (ms == null || cb == null) { $('#ev-preview').textContent = ''; return; }
+    const it = Math.round((ms * BASE / D - cb) / 10) / 100;
+    $('#ev-preview').innerHTML = `IT ${fit(it)} · <span class="st">${'★'.repeat(starsFromIT(it))}</span>`;
+  };
+  $('#ev-time').oninput = prev; prev();
+  $('#ev-swap').onclick = () => { [evSel.d, evSel.r] = [evSel.r, evSel.d]; paintEvlEntry(); paintEvlGroups(); };
+  $('#ev-go').addEventListener('pointerdown', e => { e.preventDefault(); evRun = { t0: performance.now(), t: null }; requestWake(); paintEvlEntry(); evTick(); });
+  $('#ev-stop').addEventListener('pointerdown', e => { e.preventDefault(); if (!evRun || evRun.t0 == null) return; evRun.t = performance.now() - evRun.t0; evRun.endAt = Date.now(); cancelAnimationFrame(raf); releaseWake(); paintEvlEntry(); });
+  $('#ev-cancel').onclick = () => { evSel = { g: evSel.g, d: null, r: null }; evRun = null; cancelAnimationFrame(raf); releaseWake(); paintEvlEntry(); paintEvlGroups(); };
+  $('#ev-fail').onclick = () => evSave(true);
+  $('#ev-save').onclick = () => evSave(false);
+}
+function evTick() { if (!evRun || evRun.t != null || view !== 'evl') return; const el = $('#ev-clock'); if (el) el.textContent = fmt(performance.now() - evRun.t0); raf = requestAnimationFrame(evTick); }
+function evSave(failed) {
+  const c = cls(), D = S.settings.total;
+  const ms = failed ? null : parseTime($('#ev-time').value, 40);
+  if (!failed && ms == null) { toast('Saisissez ou chronométrez le temps'); return; }
+  if (failed && !confirm('Enregistrer un passage raté (1 ★) ?')) return;
+  const p = finalize({ id: uid(), ts: Date.now(), endAt: (evRun && evRun.endAt) || Date.now(), tablet: S.settings.tablet, local: true,
+    d: evSel.d, r: evSel.r, dSnap: snap(c, evSel.d), rSnap: snap(c, evSel.r), tIn: null, tZt: null, tEnd: ms,
+    cible: cible100(c, evSel.d, evSel.r), fail: failed ? 'autre' : null, c: {}, cfg: { total: D, zt: S.settings.zt }, les: 'ev', grp: evSel.g || null });
+  c.passages.push(p); save();
+  toast(failed ? 'Passage raté enregistré (1 ★)' : `${fmt(ms)} s · IT ${fit(p.it)} · ${'★'.repeat(p.stars || 0)}`, 3000);
+  evSel = { g: evSel.g, d: null, r: null }; evRun = null; paintEvlEntry(); paintEvlGroups();
+}
+$('#evl-notes').onclick = () => { $('#b-les').value = 'ev'; show('bilan'); };
+/* Fiche PDF de saisie : une page par groupe, colonnes Démarreur / Relayeur et résultats à côté, sans pied de page */
+$('#evl-pdf').onclick = () => {
+  if (!window.jspdf) { toast('Module PDF indisponible'); return; }
+  const c = cls(), D = S.settings.total, gs = evGroups(c);
+  if (!gs.length) { toast('Constituez d\'abord les groupes'); return; }
+  const doc = new jspdf.jsPDF({ unit: 'mm', format: 'a4' }), W = 210, M = 12, navy = [2, 36, 98], grey = [91, 107, 134];
+  const T = (t, x, y, o) => doc.text(pdfSafe(t), x, y, o);
+  gs.forEach(({ g, mem }, gi) => {
+    if (gi) doc.addPage();
+    doc.setFillColor(...navy); doc.rect(0, 0, W, 22, 'F'); doc.setTextColor(255);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(16); T(`Évaluation relais - ${g ? 'Groupe ' + g : 'Sans groupe'}`, M, 10);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); T(`${c.name} · ${new Date().toLocaleDateString('fr-FR')} · relais de ${D} m · cible = 50 m D + 50 m R - 0,3 s (ramenée à ${D} m)`, M, 17);
+    let y = 30;
+    // coureurs
+    doc.setTextColor(...navy); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); T('Coureurs', M, y); y += 5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(30, 30, 30);
+    T(mem.map(s => `${dnStudent(c, s)} (${s.sexe || '?'}) : ${best50(c, s.id) != null ? fmt(best50(c, s.id)) + ' s' : '-'}`).join('    '), M, y, { maxWidth: W - 2 * M }); y += 8;
+    // tableau des cibles
+    doc.setTextColor(...navy); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); T(`Cibles (${D} m) : démarreur en ligne, relayeur en colonne`, M, y); y += 2;
+    const cw = Math.min(30, (W - 2 * M - 34) / mem.length), rh = 6.5;
+    doc.setFontSize(8.5); doc.setFillColor(238, 244, 252); doc.rect(M, y, 34 + cw * mem.length, rh, 'F');
+    mem.forEach((s, j) => T(doc.splitTextToSize(pdfSafe(dnStudent(c, s)), cw - 1)[0], M + 34 + j * cw + 1, y + 4.5)); y += rh;
+    doc.setFont('helvetica', 'normal');
+    mem.forEach(a => {
+      doc.setDrawColor(210); doc.line(M, y + rh, M + 34 + cw * mem.length, y + rh);
+      doc.setFont('helvetica', 'bold'); T(doc.splitTextToSize(pdfSafe(dnStudent(c, a)), 33)[0], M + 1, y + 4.5); doc.setFont('helvetica', 'normal');
+      mem.forEach((b, j) => { const cb = a.id === b.id ? null : cible100(c, a.id, b.id); T(a.id === b.id ? '—' : cb != null ? fmt(cb * D / BASE) : '-', M + 34 + j * cw + 1, y + 4.5); });
+      y += rh;
+    });
+    y += 7;
+    // feuille de saisie
+    doc.setTextColor(...navy); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); T('Passages (4 par élève ; au-delà, les meilleurs sont retenus)', M, y); y += 3;
+    const cols = [['N°', 10], ['Démarreur', 42], ['Relayeur', 42], ['Cible', 22], ['Chrono', 26], ['IT', 20], ['Étoiles', 24]];
+    const tw = cols.reduce((a, x) => a + x[1], 0);
+    doc.setFillColor(...navy); doc.rect(M, y, tw, 7, 'F'); doc.setTextColor(255); doc.setFontSize(9);
+    let x = M; cols.forEach(([l, w]) => { T(l, x + 1.5, y + 4.8); x += w; }); y += 7;
+    const P = evPass(c).filter(p => mem.some(s => s.id === p.d) && mem.some(s => s.id === p.r)).sort((a, b) => a.ts - b.ts);
+    const nRows = Math.max(P.length + 4, mem.length * 2 + 2), RH = 8.5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+    for (let i = 0; i < nRows && y + RH < 290; i++) {
+      const p = P[i];
+      if (i % 2) { doc.setFillColor(246, 249, 253); doc.rect(M, y, tw, RH, 'F'); }
+      doc.setDrawColor(200); doc.rect(M, y, tw, RH);
+      x = M; cols.forEach(([, w]) => { doc.line(x, y, x, y + RH); x += w; });
+      doc.setTextColor(30, 30, 30);
+      const v = p ? [i + 1, dn(c, p.d, p.dSnap), dn(c, p.r, p.rSnap), p.tgt != null ? fmt(p.tgt) : '', p.fail ? 'raté' : fmt(p.tEnd), fit(passIT(c, p)), '*'.repeat(passStars(c, p) || 0)] : [i + 1, '', '', '', '', '', ''];
+      x = M; v.forEach((val, j) => { T(doc.splitTextToSize(pdfSafe(val), cols[j][1] - 2)[0] || '', x + 1.5, y + 5.6); x += cols[j][1]; });
+      y += RH;
+    }
+    doc.setTextColor(...grey); doc.setFontSize(8.5);
+    if (y + 10 < 292) T('Étoiles : IT <= 0 : 4 * · de 0,1 à 0,5 : 3 * · de 0,6 à 1 : 2 * · >= 1,1 ou raté : 1 *   (IT = chrono ramené à 100 m - cible 100 m)', M, y + 6);
+  });
+  deliver(doc.output('blob'), `Evaluation_relais_fiche_${safeName(c.name)}.pdf`);
+};
+
+/* =====================================================================
    PROF : temps sur 50 m (voir / corriger)
    ===================================================================== */
-function parseTime(v) { const x = parseFloat(String(v).trim().replace(',', '.').replace(/[^\d.]/g, '')); return isFinite(x) && x > 3 && x < 30 ? Math.round(x * 1000) : null; }
+function parseTime(v, max = 30) { const x = parseFloat(String(v).trim().replace(',', '.').replace(/[^\d.]/g, '')); return isFinite(x) && x > 3 && x < max ? Math.round(x * 1000) : null; }
 function renderPerf50() {
   const c = cls(); c.man50 = c.man50 || {};
   const rows = [...c.students].sort(byFirst).map(s => {
@@ -755,7 +928,7 @@ $('#ap-all').onclick = () => { apDraft = new Set(); paintAppel(); };
 $('#ap-ok').onclick = () => {
   const c = cls(); c.absent = { day: today(), ids: [...apDraft] }; save();
   const inGrp = [...apDraft].filter(id => (c.grp || {})[id] || (c.tg || {})[id]).length;
-  toast(`Appel enregistré · ${apDraft.size} absent(s)${inGrp ? ' · renvoyez la séance aux tablettes' : ''}`, 3500); show('menu');
+  toast(`Appel enregistré · ${apDraft.size} absent(s)${inGrp && !evlFlow ? ' · renvoyez la séance aux tablettes' : ''}`, 3500); show(evlFlow ? 'evl' : 'menu');
 };
 
 /* =====================================================================
@@ -1199,7 +1372,7 @@ function saveTg() {
   c.tg = {}; Object.entries(tgDraft).forEach(([k, g]) => { if (g) c.tg[k] = ren[g]; });
   c.tgN = used.length; save(); toast(`${c.tgN} groupes de travail validés`); return true;
 }
-$('#tg-save').onclick = () => { if (saveTg()) show('menu'); };
+$('#tg-save').onclick = () => { if (saveTg()) show(evlFlow ? 'evl' : 'menu'); };
 $('#tg-send').onclick = () => { if (saveTg()) { sendKind = 'S'; show('send'); } };
 
 /* ---- tablette : les binômes du groupe ---- */
@@ -2029,7 +2202,7 @@ $('#exp-xlsx').onclick = () => {
       p.fail ? 'Raté' : 'Réussi', p.fail ? (FAILS.find(f => f.k === p.fail) || {}).label : '',
       sec(p.tEnd), sec(p.tgt), passIT(c, p) ?? '', passStars(c, p) ?? '', sec(p.tIn), sec(p.tZt), p.vZt ?? '', p.vR ?? '', p.gap ?? '',
       ...crits(c).map(cr => critText(cr, p.c[cr.k])),
-      p.les === 'tg' ? 'Travail de groupe' : 'Relais à deux', p.grp || '', ...txs(c).map(t => p.tx ? txVal(t, p.tx[t.k]) : '')]));
+      p.les === 'tg' ? 'Travail de groupe' : p.les === 'ev' ? 'Évaluation' : 'Relais à deux', p.grp || '', ...txs(c).map(t => p.tx ? txVal(t, p.tx[t.k]) : '')]));
   const s50 = [['Date', 'Tablette', 'Nom', 'Prénom', 'Temps 50 m (s)']]
     .concat([...F.spr].sort((a, b) => a.ts - b.ts).map(s => [new Date(s.ts).toLocaleString('fr-FR'), s.tablet || '', ...nm(s.sid, s.snap), sec(s.t)]));
   const bil = [['Bilan de classe', c.name], ['Relais', st.N], ['Ratés', st.nFail], ...st.failBy.map(f => ['  ' + f.label, f.n]),

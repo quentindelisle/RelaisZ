@@ -68,6 +68,18 @@
     <div id="class-list" class="list"></div>
   </section>
 
+  <!-- ============ PROF : LEÇON D'ÉVALUATION ============ -->
+  <section id="v-evl" class="view">
+    <div class="evl-steps" id="evl-steps"></div>
+    <div class="row gap wrap evl-actions">
+      <button id="evl-pdf" class="btn ghost">📄 Fiche PDF de saisie (par groupe)</button>
+      <button id="evl-notes" class="btn primary">📊 Notes de l'évaluation</button>
+    </div>
+    <h2>④ Passages <small>ordre libre · touchez le démarreur puis le relayeur dans un groupe · au-delà de 4 passages, les meilleurs sont retenus</small></h2>
+    <div id="evl-entry" class="card evl-entry hidden"></div>
+    <div id="evl-groups" class="evl-groups"></div>
+  </section>
+
   <!-- ============ PROF : temps sur 50 m (correction manuelle) ============ -->
   <section id="v-perf50" class="view">
     <div class="card">
@@ -373,14 +385,14 @@
       <button id="exp-xlsx" class="btn primary small">Exporter XLSX</button>
     </div>
     <div class="card row gap wrap">
-      <label class="inline">Leçon <select id="b-les"><option value="all">Toutes</option><option value="rel">Relais à deux</option><option value="tg">Travail de groupe</option></select></label>
+      <label class="inline">Leçon <select id="b-les"><option value="all">Toutes</option><option value="rel">Relais à deux</option><option value="tg">Travail de groupe</option><option value="ev">Évaluation</option></select></label>
       <label class="inline">Séance <select id="b-date"></select></label>
       <label class="inline">Tablettes <select id="b-tab"></select></label>
     </div>
     <div id="b-kpi" class="kpis"></div>
 
     <h2>Notes <small>/12 = vitesse individuelle /3 + vitesse collective /3 + efficacité technique /6</small></h2>
-    <p class="hint">Meilleur 50 m et meilleur relais retenus. Étoiles : 4 meilleures courses ; avec 2 ou 3 courses, total extrapolé sur 4 (×4/n). Efficacité technique : degré fixé par les étoiles, niveau dans le degré proposé d'après les critères qualitatifs (modifiable).</p>
+    <p class="hint">Meilleur 50 m et meilleur relais retenus. Étoiles : 4 meilleures courses ; avec 2 ou 3 courses, total extrapolé sur 4 (×4/n). Efficacité technique : degré fixé par les étoiles, niveau dans le degré proposé d'après les critères qualitatifs, ou d'après le nombre d'étoiles quand il n'y a pas de critères (leçon d'évaluation) ; modifiable.</p>
     <div class="table-wrap"><table id="b-notes"></table></div>
 
     <div id="b-tg"></div>
@@ -396,7 +408,7 @@
     <div id="b-hist50" class="list"></div>
   </section>
 
-  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v4.9 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
+  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v5.0 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
 </main>
 
 <div id="toast" class="toast"></div>
