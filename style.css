@@ -522,3 +522,6 @@ label.check.big{font-size:1.05rem;padding:8px 12px;border:1.5px solid var(--line
 td.tot.eps{color:#5b21b6;background:#f5f0ff}
 th.tot.eps{background:#e9ddff}
 .evl-row .sub.zt{display:block;font-size:.78rem;color:var(--muted,#5b6b86);font-weight:600}
+/* v5.2 – couleurs des groupes */
+.gdot{display:inline-block;width:14px;height:14px;border-radius:50%;margin-right:6px;vertical-align:-2px;border:1.5px solid rgba(0,0,0,.35)}
+.gswatch{width:26px;height:26px;border-radius:50%;border:2px solid rgba(0,0,0,.35);margin-right:8px;vertical-align:middle;cursor:pointer;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.2)}

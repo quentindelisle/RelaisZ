@@ -424,7 +424,7 @@ function renderEleve() {
     </div>
     ${c.tgN ? `<h2>Groupes suivis par cette tablette <small>touchez pour cocher / décocher (un ou plusieurs)</small></h2><div class="grp-pick">${Array.from({ length: c.tgN }, (_, i) => i + 1).map(g => {
       const mem = tgMembers(c, g);
-      return `<button class="grp-btn tgb ${c.myTg.includes(g) ? 'on' : ''}" data-mytg="${g}"><b>${c.myTg.includes(g) ? '☑' : '☐'} Groupe ${g}</b><span>${mem.map(s => esc(dnStudent(c, s))).join(' · ') || '—'}</span></button>`;
+      return `<button class="grp-btn tgb ${c.myTg.includes(g) ? 'on' : ''}" data-mytg="${g}"><b>${c.myTg.includes(g) ? '☑' : '☐'} ${gDot(c, g)}${gLbl(c, g)}</b><span>${mem.map(s => esc(dnStudent(c, s))).join(' · ') || '—'}</span></button>`;
     }).join('')}</div>${c.myTg.length ? `<div class="row gap center"><button class="btn primary big" data-go="tiles">② Relais à deux</button><button class="btn primary big" data-go="tg">③ Travail de groupe</button><button class="btn primary big" data-go="evl">④ Évaluation</button></div>` : ''}` : ''}`;
   $$('[data-mytg]').forEach(b => b.onclick = () => {
     const g = +b.dataset.mytg;
@@ -441,7 +441,7 @@ function buildS(c) {
     set: { total: S.settings.total, zt: S.settings.zt, rec: S.settings.rec, vid: S.settings.vid, vdelay: S.settings.vdelay },
     txc: txAll(c),
     crit: crits(c).map(x => [x.k, x.l, ctype(x), x.o || [], x.ord ? 1 : 0]), ng: 0,
-    tgN: c.tgN || 0, abs: { day: today(), ids: absIds(c).map(id => c.students.findIndex(s => s.id === id)).filter(i => i >= 0) },
+    tgN: c.tgN || 0, tgc: Array.from({ length: c.tgN || 0 }, (_, i) => gColIdx(c.tgCol, i + 1)), abs: { day: today(), ids: absIds(c).map(id => c.students.findIndex(s => s.id === id)).filter(i => i >= 0) },
     st: c.students.map(s => [s.nom, s.prenom, s.sexe || '', best50(c, s.id), 0, c.tgN ? (c.tg[s.id] || 0) : 0, c.man50 && c.man50[s.id] != null ? 1 : 0]) };
 }
 function applyS(p) {
@@ -454,7 +454,7 @@ function applyS(p) {
     if (ex) { ex.sexe = sexe || ex.sexe; ex.nom = nom; ex.prenom = prenom; } else c.students.push({ id, nom, prenom, sexe });
   });
   const tgChanged = (c.tgN || 0) !== (p.tgN || 0);
-  c.tg = {}; c.tgN = p.tgN || 0;
+  c.tg = {}; c.tgN = p.tgN || 0; c.tgCol = {}; (p.tgc || []).forEach((v, i) => { c.tgCol[i + 1] = v; });
   p.st.forEach(([nom, prenom, , , , tg]) => { if (tg) c.tg[keyOf(nom, prenom)] = tg; });
   c.myTg = tgChanged ? [] : (c.myTg || []).filter(g => g <= c.tgN);
   if (p.abs) c.absent = { day: p.abs.day, ids: p.abs.ids.map(i => p.st[i]).filter(Boolean).map(([n, pr]) => keyOf(n, pr)) };
@@ -716,6 +716,28 @@ function renderClasses() {
    ===================================================================== */
 let evSel = { g: null, d: null, r: null }, evRun = null;
 const evPass = c => c.passages.filter(p => p.les === 'ev');
+/* couleurs des groupes (chasubles) */
+const GCOL = [['Rouge', '#e53935'], ['Bleu', '#1e66d0'], ['Vert', '#2e9d4a'], ['Jaune', '#f2c200'], ['Orange', '#f57c00'], ['Violet', '#7e3ab5'],
+  ['Rose', '#e84f9a'], ['Marron', '#8d5a2b'], ['Noir', '#222222'], ['Turquoise', '#00a3a3'], ['Gris', '#8a94a6'], ['Blanc', '#ffffff']];
+const gColIdx = (map, g) => map && map[g] != null ? map[g] : (g - 1) % GCOL.length;
+const gCol = (c, g) => g ? GCOL[gColIdx(c.tgCol, g)] : ['Sans groupe', '#8a94a6'];
+const gDot = (c, g) => g ? `<i class="gdot" style="background:${gCol(c, g)[1]}"></i>` : '';
+const gLbl = (c, g) => g ? `Groupe ${g} · ${gCol(c, g)[0]}` : 'Sans groupe';
+const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const lightCol = h => { const [r, g, b] = hexRgb(h); return r * .299 + g * .587 + b * .114 > 170; };
+/* ordre des binômes : on évite qu'un élève enchaîne deux passages */
+function pairOrder(mem) {
+  const all = []; mem.forEach(a => mem.forEach(b => { if (a.id !== b.id) all.push([a, b]); }));
+  const out = [], cnt = {};
+  while (all.length) {
+    const last = out[out.length - 1], prev = out[out.length - 2];
+    const hit = (pr, a, b, w) => pr ? ((pr.some(x => x.id === a.id) ? w : 0) + (pr.some(x => x.id === b.id) ? w : 0)) : 0;
+    const score = ([a, b]) => hit(last, a, b, 10) + hit(prev, a, b, 3) + (cnt[a.id] || 0) + (cnt[b.id] || 0);
+    let bi = 0; all.forEach((p, i) => { if (score(p) < score(all[bi])) bi = i; });
+    const [p] = all.splice(bi, 1); out.push(p); p.forEach(x => { cnt[x.id] = (cnt[x.id] || 0) + 1; });
+  }
+  return out;
+}
 function evGroups(c) {
   const gs = Array.from({ length: c.tgN || 0 }, (_, i) => i + 1).filter(g => isProf() || (c.myTg || []).includes(g)).map(g => ({ g, mem: tgMembers(c, g) })).filter(x => x.mem.length);
   if (!isProf()) return gs;
@@ -744,7 +766,7 @@ function paintEvlGroups() {
   const c = cls(), D = S.settings.total, gs = evGroups(c);
   $('#evl-groups').innerHTML = gs.length ? gs.map(({ g, mem }) => {
     const P = evPass(c).filter(p => mem.some(s => s.id === p.d) && mem.some(s => s.id === p.r)).sort((a, b) => b.ts - a.ts);
-    return `<div class="card evl-g"><div class="row between wrap"><h3 style="margin:0">${g ? `Groupe ${g}` : 'Sans groupe'}</h3><span class="meta">${P.length} passage${P.length > 1 ? 's' : ''}</span></div>
+    return `<div class="card evl-g" style="border-top:6px solid ${gCol(c, g)[1]}"><div class="row between wrap"><h3 style="margin:0">${gDot(c, g)}${gLbl(c, g)}</h3><span class="meta">${P.length} passage${P.length > 1 ? 's' : ''}</span></div>
       <div class="evl-mem">${mem.map(s => { const e = evStats(c, s.id), b = best50(c, s.id), role = evSel.d === s.id ? 'd' : evSel.r === s.id ? 'r' : '';
         return `<button class="tile ${role ? 'sel-' + role : ''} ${e.n >= 4 ? 'done4' : ''}" data-ev="${esc(s.id)}" data-evg="${g}">
           ${role ? `<span class="role ${role} badge">${role.toUpperCase()}</span>` : ''}
@@ -843,52 +865,64 @@ $('#evl-pdf').onclick = () => {
   if (!window.jspdf) { toast('Module PDF indisponible'); return; }
   const c = cls(), D = S.settings.total, gs = evGroups(c);
   if (!gs.length) { toast('Constituez d\'abord les groupes'); return; }
-  const doc = new jspdf.jsPDF({ unit: 'mm', format: 'a4' }), W = 210, M = 12, navy = [2, 36, 98], grey = [91, 107, 134];
+  const doc = new jspdf.jsPDF({ unit: 'mm', format: 'a4' }), W = 210, H = 297, M = 12, navy = [2, 36, 98], grey = [91, 107, 134];
   const T = (t, x, y, o) => doc.text(pdfSafe(t), x, y, o);
   gs.forEach(({ g, mem }, gi) => {
     if (gi) doc.addPage();
-    doc.setFillColor(...navy); doc.rect(0, 0, W, 22, 'F'); doc.setTextColor(255);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(16); T(`Évaluation relais - ${g ? 'Groupe ' + g : 'Sans groupe'}`, M, 10);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); T(`${c.name} · ${new Date().toLocaleDateString('fr-FR')} · relais de ${D} m · cible = 50 m D + 50 m R - 0,3 s (ramenée à ${D} m)`, M, 17);
-    let y = 30;
-    // coureurs
-    doc.setTextColor(...navy); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); T('Coureurs', M, y); y += 5;
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(30, 30, 30);
-    T(mem.map(s => `${dnStudent(c, s)} (${s.sexe || '?'}) : ${best50(c, s.id) != null ? fmt(best50(c, s.id)) + ' s' : '-'}`).join('    '), M, y, { maxWidth: W - 2 * M }); y += 8;
-    // tableau des cibles
-    doc.setTextColor(...navy); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); T(`Cibles (${D} m) : démarreur en ligne, relayeur en colonne`, M, y); y += 2;
-    const cw = Math.min(30, (W - 2 * M - 34) / mem.length), rh = 6.5;
-    doc.setFontSize(8.5); doc.setFillColor(238, 244, 252); doc.rect(M, y, 34 + cw * mem.length, rh, 'F');
-    mem.forEach((s, j) => T(doc.splitTextToSize(pdfSafe(dnStudent(c, s)), cw - 1)[0], M + 34 + j * cw + 1, y + 4.5)); y += rh;
-    doc.setFont('helvetica', 'normal');
-    mem.forEach(a => {
-      doc.setDrawColor(210); doc.line(M, y + rh, M + 34 + cw * mem.length, y + rh);
-      doc.setFont('helvetica', 'bold'); T(doc.splitTextToSize(pdfSafe(dnStudent(c, a)), 33)[0], M + 1, y + 4.5); doc.setFont('helvetica', 'normal');
-      mem.forEach((b, j) => { const cb = a.id === b.id ? null : cible100(c, a.id, b.id); T(a.id === b.id ? '—' : cb != null ? fmt(cb * D / BASE) : '-', M + 34 + j * cw + 1, y + 4.5); });
-      y += rh;
+    const [cn, hex] = gCol(c, g), rgb = hexRgb(hex), light = lightCol(hex), ink = light ? [20, 20, 20] : [255, 255, 255];
+    // bande de couleur du groupe (haut + bord gauche)
+    doc.setFillColor(...rgb); doc.rect(0, 0, W, 30, 'F'); doc.rect(0, 0, 5, H, 'F');
+    if (light) { doc.setDrawColor(60); doc.setLineWidth(0.6); doc.line(0, 30, W, 30); doc.line(5, 30, 5, H); doc.setLineWidth(0.2); }
+    doc.setTextColor(...ink); doc.setFont('helvetica', 'bold'); doc.setFontSize(24);
+    T(g ? `GROUPE ${g} - ${cn.toUpperCase()}` : 'SANS GROUPE', M, 14);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    T(`Évaluation relais ${D} m · ${c.name} · ${new Date().toLocaleDateString('fr-FR')}`, M, 22);
+    T(`Cible = 50 m D + 50 m R - 0,3 s${D !== BASE ? ` (ramenée à ${D} m)` : ''}`, M, 27);
+    // pastille couleur à droite
+    doc.setFillColor(255); doc.roundedRect(W - M - 34, 5, 34, 20, 3, 3, 'F');
+    doc.setFillColor(...rgb); doc.roundedRect(W - M - 32, 7, 30, 16, 2, 2, 'F'); doc.setDrawColor(60); doc.roundedRect(W - M - 32, 7, 30, 16, 2, 2, 'S');
+    doc.setTextColor(...ink); doc.setFont('helvetica', 'bold'); doc.setFontSize(11); T(cn.toUpperCase(), W - M - 17, 17, { align: 'center' });
+    let y = 39;
+    // coureurs + cases à cocher par passage
+    doc.setTextColor(...navy); doc.setFontSize(11); T('Coureurs', M, y);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...grey); T('cochez une case à chaque passage (4 minimum)', M + 22, y); y += 2;
+    mem.forEach(s => {
+      const P = evPass(c).filter(p => p.d === s.id || p.r === s.id).length;
+      doc.setTextColor(30, 30, 30); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); T(dnStudent(c, s), M + 1, y + 5.2);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); T(`${s.sexe || '?'} · 50 m : ${best50(c, s.id) != null ? fmt(best50(c, s.id)) + ' s' : '-'}`, M + 48, y + 5.2);
+      for (let k = 0; k < 8; k++) { const x = M + 95 + k * 9; doc.setDrawColor(120); doc.rect(x, y + 1.3, 5.5, 5.5); if (k < P) { doc.setDrawColor(...navy); doc.setLineWidth(0.6); doc.line(x + 1, y + 4, x + 2.4, y + 5.8); doc.line(x + 2.4, y + 5.8, x + 4.8, y + 2); doc.setLineWidth(0.2); } }
+      y += 7.5;
     });
-    y += 7;
-    // feuille de saisie
-    doc.setTextColor(...navy); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); T('Passages (4 par élève ; au-delà, les meilleurs sont retenus)', M, y); y += 3;
-    const cols = [['N°', 10], ['Démarreur', 42], ['Relayeur', 42], ['Cible', 22], ['Chrono', 26], ['IT', 20], ['Étoiles', 24]];
+    y += 5;
+    // tous les binômes possibles
+    const order = pairOrder(mem);
+    doc.setTextColor(...navy); doc.setFont('helvetica', 'bold'); doc.setFontSize(11); T(`Binômes possibles (${order.length}) : choisissez la ligne du binôme qui passe`, M, y); y += 3;
+    const cols = [['N°', 9], ['Démarreur', 40], ['Relayeur', 40], ['Cible', 22], ['Chrono', 28], ['2e essai', 28], ['Étoiles', 19]];
     const tw = cols.reduce((a, x) => a + x[1], 0);
-    doc.setFillColor(...navy); doc.rect(M, y, tw, 7, 'F'); doc.setTextColor(255); doc.setFontSize(9);
-    let x = M; cols.forEach(([l, w]) => { T(l, x + 1.5, y + 4.8); x += w; }); y += 7;
-    const P = evPass(c).filter(p => mem.some(s => s.id === p.d) && mem.some(s => s.id === p.r)).sort((a, b) => a.ts - b.ts);
-    const nRows = Math.max(P.length + 4, mem.length * 2 + 2), RH = 8.5;
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-    for (let i = 0; i < nRows && y + RH < 290; i++) {
-      const p = P[i];
+    doc.setFillColor(...rgb); doc.rect(M, y, tw, 7.5, 'F'); if (light) { doc.setDrawColor(60); doc.rect(M, y, tw, 7.5); }
+    doc.setTextColor(...ink); doc.setFontSize(9.5);
+    let x = M; cols.forEach(([l, w]) => { T(l, x + 1.5, y + 5.1); x += w; }); y += 7.5;
+    const RH = order.length > 12 ? 8 : 9.5, extra = Math.max(0, Math.min(4, Math.floor((H - 18 - y - order.length * RH) / RH)));
+    const rows = [...order.map(([a, b]) => ({ a, b })), ...Array.from({ length: extra }, () => null)];
+    rows.forEach((row, i) => {
       if (i % 2) { doc.setFillColor(246, 249, 253); doc.rect(M, y, tw, RH, 'F'); }
-      doc.setDrawColor(200); doc.rect(M, y, tw, RH);
+      doc.setDrawColor(190); doc.rect(M, y, tw, RH);
       x = M; cols.forEach(([, w]) => { doc.line(x, y, x, y + RH); x += w; });
-      doc.setTextColor(30, 30, 30);
-      const v = p ? [i + 1, dn(c, p.d, p.dSnap), dn(c, p.r, p.rSnap), p.tgt != null ? fmt(p.tgt) : '', p.fail ? 'raté' : fmt(p.tEnd), fit(passIT(c, p)), '*'.repeat(passStars(c, p) || 0)] : [i + 1, '', '', '', '', '', ''];
-      x = M; v.forEach((val, j) => { T(doc.splitTextToSize(pdfSafe(val), cols[j][1] - 2)[0] || '', x + 1.5, y + 5.6); x += cols[j][1]; });
+      let v;
+      if (row) {
+        const cb = cible100(c, row.a.id, row.b.id), P = evPass(c).filter(p => p.d === row.a.id && p.r === row.b.id).sort((p, q) => p.ts - q.ts);
+        const res = p => p ? (p.fail ? 'raté' : fmt(p.tEnd)) : '', st = P.map(p => passStars(c, p)).filter(z => z != null);
+        v = [i + 1, dnStudent(c, row.a), dnStudent(c, row.b), cb != null ? fmt(cb * D / BASE) + ' s' : '-', res(P[0]), res(P[1]), st.length ? '*'.repeat(Math.max(...st)) : ''];
+      } else v = ['', '', '', '', '', '', ''];
+      x = M; v.forEach((val, j) => {
+        doc.setTextColor(30, 30, 30); doc.setFont('helvetica', j === 1 || j === 2 || j === 3 ? 'bold' : 'normal'); doc.setFontSize(j === 3 ? 10.5 : 10);
+        if (j === 3) doc.setTextColor(...navy);
+        T(doc.splitTextToSize(pdfSafe(val), cols[j][1] - 2)[0] || '', x + 1.5, y + RH / 2 + 1.6); x += cols[j][1];
+      });
       y += RH;
-    }
-    doc.setTextColor(...grey); doc.setFontSize(8.5);
-    if (y + 10 < 292) T('Étoiles : IT <= 0 : 4 * · de 0,1 à 0,5 : 3 * · de 0,6 à 1 : 2 * · >= 1,1 ou raté : 1 *   (IT = chrono ramené à 100 m - cible 100 m)', M, y + 6);
+    });
+    doc.setTextColor(...grey); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+    if (y + 8 < H - 4) T('Étoiles : IT <= 0 : 4 * · de 0,1 à 0,5 : 3 * · de 0,6 à 1 : 2 * · >= 1,1 ou raté : 1 *   (IT = chrono ramené à 100 m - cible 100 m)', M, y + 6);
   });
   deliver(doc.output('blob'), `Evaluation_relais_fiche_${safeName(c.name)}.pdf`);
 };
@@ -1288,10 +1322,10 @@ function pairStats(c, d, r, list) {
 }
 
 /* ---- prof : constitution des groupes par cliquer-glisser ---- */
-let tgDraft = {}, tgCount = 0, tgSel = new Set();
+let tgColDraft = {}, tgDraft = {}, tgCount = 0, tgSel = new Set();
 function renderTgroupes() {
   const c = cls();
-  tgDraft = { ...c.tg }; tgCount = c.tgN || Math.max(1, Math.ceil(present(c).length / 4)); tgSel = new Set();
+  tgDraft = { ...c.tg }; tgColDraft = { ...(c.tgCol || {}) }; tgCount = c.tgN || Math.max(1, Math.ceil(present(c).length / 4)); tgSel = new Set();
   paintTg();
 }
 function paintTg() {
@@ -1303,8 +1337,8 @@ function paintTg() {
   board.innerHTML = Array.from({ length: tgCount + 1 }, (_, g) => g).map(g => {
     const mem = c.students.filter(s => (tgDraft[s.id] || 0) === g).sort((a, b) => (level(c, b.id) ?? -1e9) - (level(c, a.id) ?? -1e9));
     const bad = g && mem.length && (mem.length < 3 || mem.length > 4);
-    return `<div class="g-col ${g === 0 ? 'none' : ''} ${bad ? 'bad' : ''}" data-tcol="${g}">
-      <div class="g-head">${g ? `Groupe ${g}` : 'À placer'} <span>${mem.length} élève${mem.length > 1 ? 's' : ''}${g && mem.length ? ` · ${mem.length * (mem.length - 1)} binômes possibles` : ''}${bad ? ' · ⚠ 3 ou 4 conseillés' : ''}</span>${tgSel.size ? `<em>⬇ déposer ${tgSel.size > 1 ? `les ${tgSel.size} élèves` : 'ici'}</em>` : ''}</div>
+    return `<div class="g-col ${g === 0 ? 'none' : ''} ${bad ? 'bad' : ''}" data-tcol="${g}" ${g ? `style="border-top:6px solid ${GCOL[gColIdx(tgColDraft, g)][1]}"` : ''}>
+      <div class="g-head">${g ? `<button class="gswatch" data-gsw="${g}" style="background:${GCOL[gColIdx(tgColDraft, g)][1]}" title="Changer la couleur"></button>Groupe ${g} · ${GCOL[gColIdx(tgColDraft, g)][0]}` : 'À placer'} <span>${mem.length} élève${mem.length > 1 ? 's' : ''}${g && mem.length ? ` · ${mem.length * (mem.length - 1)} binômes possibles` : ''}${bad ? ' · ⚠ 3 ou 4 conseillés' : ''}</span>${tgSel.size ? `<em>⬇ déposer ${tgSel.size > 1 ? `les ${tgSel.size} élèves` : 'ici'}</em>` : ''}</div>
       <div class="g-list">${mem.map(chip).join('') || '<span class="meta">Glissez des élèves ici</span>'}</div></div>`;
   }).join('');
   enableDrag(board);
@@ -1341,6 +1375,12 @@ function enableDrag(board) {
     };
     document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
   }));
+  board.querySelectorAll('[data-gsw]').forEach(b => b.onclick = e => {
+    e.stopPropagation(); const g = +b.dataset.gsw, cur = gColIdx(tgColDraft, g);
+    const used = new Set(Array.from({ length: tgCount }, (_, i) => i + 1).filter(x => x !== g).map(x => gColIdx(tgColDraft, x)));
+    let n = cur; for (let k = 1; k <= GCOL.length; k++) { n = (cur + k) % GCOL.length; if (!used.has(n)) break; }
+    tgColDraft[g] = n; paintTg();
+  });
   board.querySelectorAll('[data-tcol] .g-head').forEach(hd => hd.onclick = () => {
     if (!tgSel.size) return; const g = +hd.closest('[data-tcol]').dataset.tcol; tgSel.forEach(m => { tgDraft[m] = g; }); tgSel = new Set(); paintTg();
   });
@@ -1389,6 +1429,7 @@ function saveTg() {
   // numéros de groupes sans trou
   const used = [...new Set(Object.values(tgDraft).filter(Boolean))].sort((a, b) => a - b), ren = Object.fromEntries(used.map((g, i) => [g, i + 1]));
   c.tg = {}; Object.entries(tgDraft).forEach(([k, g]) => { if (g) c.tg[k] = ren[g]; });
+  c.tgCol = {}; used.forEach(g => { c.tgCol[ren[g]] = gColIdx(tgColDraft, g); });
   c.tgN = used.length; save(); toast(`${c.tgN} groupes de travail validés`); return true;
 }
 $('#tg-save').onclick = () => { if (saveTg()) show(evlFlow ? 'evl' : 'menu'); };
@@ -1406,7 +1447,7 @@ function renderTg() {
   const g = tgProfG;
   $('#tg-gsel').innerHTML = (avail.length > 1 ? `<div class="seg tg-tabs">${avail.map(n => {
       const np = c.passages.filter(p => p.les === 'tg' && (p.grp || c.tg[p.d]) === n).length;
-      return `<button data-tgg="${n}" class="${n === g ? 'on' : ''}">Groupe ${n} <small>${np} passage${np > 1 ? 's' : ''}</small></button>`; }).join('')}</div>` : '')
+      return `<button data-tgg="${n}" class="${n === g ? 'on' : ''}">${gDot(c, n)}Groupe ${n} <small>${np} passage${np > 1 ? 's' : ''}</small></button>`; }).join('')}</div>` : '')
     + (isProf() ? '' : `<button class="btn ghost small" data-go="eleve">Choisir les groupes</button>`);
   $$('[data-tgg]').forEach(b => b.onclick = () => { tgProfG = +b.dataset.tgg; renderTg(); });
   const mem = tgMembers(c, g), pairs = tgPairs(c, g);
@@ -1483,7 +1524,7 @@ function renderTgBilan(c, list) {
     const its = P.map(p => passIT(c, p)).filter(x => x != null), st = P.map(p => passStars(c, p)).filter(x => x != null);
     const allMod = pairs.map(([d, r]) => txModal(c, pairPass(c, d, r, P))).filter(m => m.n >= 2);
     const cons = allMod.length ? pct(allMod.reduce((a, m) => a + m.same, 0), allMod.reduce((a, m) => a + m.n, 0)) : null;
-    return `<div class="card tg-card"><div class="row between wrap"><h3 style="margin:0">Groupe ${g || '?'} <span class="meta">${tgMembers(c, g).map(s => esc(dnStudent(c, s))).join(' · ')}</span></h3>
+    return `<div class="card tg-card"><div class="row between wrap"><h3 style="margin:0">${gDot(c, g)}${g ? gLbl(c, g) : 'Groupe ?'} <span class="meta">${tgMembers(c, g).map(s => esc(dnStudent(c, s))).join(' · ')}</span></h3>
       <div class="tg-kpi"><button class="btn ghost small" data-pdf="${g}">📄 PDF du groupe ${g}</button><span>🎯 cible battue <b>${P.filter(p => !p.fail && passStars(c, p) === 4).length}/${P.length}</b></span><span>★ moyennes <b>${st.length ? fnum(st.reduce((a, b) => a + b, 0) / st.length) : '–'}</b></span><span>✋ constance <b>${cons != null ? cons + ' %' : '–'}</b></span></div></div>
       <div class="table-wrap flat"><table><tr><th style="text-align:left">Binôme</th><th>Passages</th><th>Cible</th><th>Meilleur temps</th><th>Meilleur IT</th><th>Étoiles<br><small>meilleure · moy.</small></th><th>Cible battue</th><th style="text-align:left">Caractéristiques habituelles</th><th>Constance</th></tr>
       ${pairs.map(([d, r]) => { const s2 = pairStats(c, d, r, P), cb = cible100(c, d, r);

@@ -30,3 +30,7 @@ Mise à jour : incrémenter `CACHE` dans `sw.js`.
 - Prof : saisie tapée / Départ-Arrivée toujours possible (sans temps de zone) + bouton « Chrono avec zone (4 tops) ».
 - Points Zt par passage (écart de vitesse dans la zone) : > 0 % = 4 · ≥ −8 % = 3 · ≥ −15 % = 2 · ≥ −20 % = 1 · sinon 0 (raté = 0).
 - **Note Bac /12** = barème officiel. **Zt /8** = moyenne des points Zt des 4 passages retenus pour l'IT × 2. **Note EPS /12** = (Bac + Zt) × 12 / 20.
+
+## v5.2 – Couleurs de groupe et fiche PDF
+- Chaque groupe a une couleur (Rouge, Bleu, Vert, Jaune…) : touchez la pastille dans « Groupes » pour la changer ; transmise aux tablettes avec la séance.
+- Fiche PDF d'évaluation : bandeau et bord de page à la couleur du groupe, cases à cocher par coureur, **tous les binômes possibles** (ordre qui évite d'enchaîner deux passages) avec leur **cible**, colonnes Chrono / 2e essai / Étoiles, quelques lignes libres.
