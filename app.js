@@ -261,7 +261,7 @@ setInterval(updateRec, 1000);
 /* =====================================================================
    NAVIGATION · interface prof / élève
    ===================================================================== */
-const PROF_ONLY = ['evl', 'perf50', 'menu', 'classes', 'params', 'groupes', 'tgroupes', 'bilan', 'appel'];
+const PROF_ONLY = ['perf50', 'menu', 'classes', 'params', 'groupes', 'tgroupes', 'bilan', 'appel'];
 const TITLES = {
   role: ['Zones Relais', 'Choix du rôle de la tablette'], menu: ['Espace enseignant', ''], eleve: ['Tablette élève', ''],
   classes: ['Classes', 'Import et choix de la classe'], params: ['Paramètres de la course', 'Distances, récupération, critères'],
@@ -333,7 +333,7 @@ function openGo(g) {
   else if (g === 'recv-s') { recvKind = 'S'; show('recv'); }
   else if (g === 'tiles') { const c = cls(); if (c && !isProf() && c.tgN && !c.myTg.length) { show('eleve'); toast('Cochez d\'abord vos groupes'); } else show('tiles'); }
   else if (g === 'groupes') show('tgroupes');
-  else if (g === 'evl') { evlFlow = true; show('evl'); }
+  else if (g === 'evl') { const c = cls(); if (!isProf()) { if (!c || !c.tgN || !c.myTg.length) { show('eleve'); toast('Cochez d\'abord vos groupes'); return; } evlFlow = false; } else evlFlow = true; evSel = { g: null, d: null, r: null }; evRun = null; show('evl'); }
   else if (g === 'tg') { const c = cls(); if (c && !isProf() && !c.myTg.length) { show('eleve'); toast('Choisissez d\'abord votre groupe de travail'); } else show('tg'); }
   else if (g === 'bilan-tg') { $('#b-les').value = 'tg'; show('bilan'); setTimeout(() => { const e = $('#b-tg'); if (e) e.scrollIntoView({ behavior: 'smooth' }); }, 200); }
   else show(g);
@@ -419,12 +419,13 @@ function renderEleve() {
       <button class="home-btn p1" data-go="sprint"><span class="ico">①</span>50 m départ arrêté<small>${c.sprints.filter(s => s.local).length} chrono(s) sur cette tablette</small></button>
       <button class="home-btn p2" data-go="tiles" ${c.tgN && c.myTg.length ? '' : 'disabled'}><span class="ico">②</span>Relais à deux<small>${c.tgN ? (c.myTg.length ? `Groupe${c.myTg.length > 1 ? 's' : ''} ${c.myTg.join(', ')}` : 'cochez vos groupes ci-dessous') : 'en attente des groupes du prof'}</small></button>
       <button class="home-btn p3" data-go="tg" ${c.tgN && c.myTg.length ? '' : 'disabled'}><span class="ico">③</span>Travail de groupe<small>${c.tgN ? (c.myTg.length ? `Groupe${c.myTg.length > 1 ? 's' : ''} ${c.myTg.join(', ')}` : 'cochez vos groupes ci-dessous') : 'en attente des groupes du prof'}</small></button>
+      <button class="home-btn p4" data-go="evl" ${c.tgN && c.myTg.length ? '' : 'disabled'}><span class="ico">④</span>Évaluation<small>${c.tgN ? (c.myTg.length ? `passages chronométrés avec la zone · ${c.passages.filter(p => p.les === 'ev' && p.local).length} sur cette tablette` : 'cochez vos groupes ci-dessous') : 'en attente des groupes du prof'}</small></button>
       <button class="home-btn send ${unsent ? 'todo' : ''}" data-go="send-r"><span class="ico">📤</span>Envoyer mes résultats<small>${unsent ? unsent + ' nouveau(x) résultat(s) à envoyer' : 'tout a été envoyé'}</small></button>
     </div>
     ${c.tgN ? `<h2>Groupes suivis par cette tablette <small>touchez pour cocher / décocher (un ou plusieurs)</small></h2><div class="grp-pick">${Array.from({ length: c.tgN }, (_, i) => i + 1).map(g => {
       const mem = tgMembers(c, g);
       return `<button class="grp-btn tgb ${c.myTg.includes(g) ? 'on' : ''}" data-mytg="${g}"><b>${c.myTg.includes(g) ? '☑' : '☐'} Groupe ${g}</b><span>${mem.map(s => esc(dnStudent(c, s))).join(' · ') || '—'}</span></button>`;
-    }).join('')}</div>${c.myTg.length ? `<div class="row gap center"><button class="btn primary big" data-go="tiles">② Relais à deux</button><button class="btn primary big" data-go="tg">③ Travail de groupe</button></div>` : ''}` : ''}`;
+    }).join('')}</div>${c.myTg.length ? `<div class="row gap center"><button class="btn primary big" data-go="tiles">② Relais à deux</button><button class="btn primary big" data-go="tg">③ Travail de groupe</button><button class="btn primary big" data-go="evl">④ Évaluation</button></div>` : ''}` : ''}`;
   $$('[data-mytg]').forEach(b => b.onclick = () => {
     const g = +b.dataset.mytg;
     c.myTg = c.myTg.includes(g) ? c.myTg.filter(x => x !== g) : [...c.myTg, g].sort((a, b) => a - b);
@@ -716,18 +717,22 @@ function renderClasses() {
 let evSel = { g: null, d: null, r: null }, evRun = null;
 const evPass = c => c.passages.filter(p => p.les === 'ev');
 function evGroups(c) {
-  const gs = Array.from({ length: c.tgN || 0 }, (_, i) => i + 1).map(g => ({ g, mem: tgMembers(c, g) })).filter(x => x.mem.length);
+  const gs = Array.from({ length: c.tgN || 0 }, (_, i) => i + 1).filter(g => isProf() || (c.myTg || []).includes(g)).map(g => ({ g, mem: tgMembers(c, g) })).filter(x => x.mem.length);
+  if (!isProf()) return gs;
   const rest = present(c).filter(s => !c.tg[s.id]).sort(byFirst);
   if (rest.length) gs.push({ g: 0, mem: rest });
   return gs;
 }
 function renderEvl() {
+  const el = !isProf();
+  $('#evl-steps').classList.toggle('hidden', el); $('.evl-actions').classList.toggle('hidden', el);
+  if (el) { $('#tb-main').textContent = '④ Évaluation'; $('#tb-sub').textContent = `Groupe${cls().myTg.length > 1 ? 's' : ''} ${cls().myTg.join(', ')} · chrono 4 tops (zone de transmission)`; paintEvlEntry(); paintEvlGroups(); return; }
   const c = cls(), np = present(c).length, n50 = present(c).filter(s => best50(c, s.id) != null).length;
   const appelOk = c.absent && c.absent.day === today(), ng = c.tgN || 0, placed = present(c).filter(s => c.tg[s.id]).length;
   const st = (n, t, d, btn, ok) => `<div class="evl-step ${ok ? 'ok' : ''}"><span class="evl-n">${ok ? '✓' : n}</span><div><b>${t}</b><span class="meta">${d}</span></div>${btn}</div>`;
   $('#evl-steps').innerHTML =
     st(1, 'Appel', appelOk ? `${np} présents, ${absIds(c).length} absent(s)` : 'à faire', `<button class="btn ${appelOk ? 'ghost' : 'primary'} small" data-go="appel">📋 Appel</button>`, appelOk) +
-    st(2, 'Temps sur 50 m', `${n50}/${np} présents ont un temps (mémorisé ou saisi)`, `<button class="btn ${n50 < np ? 'primary' : 'ghost'} small" data-go="perf50">✏️ Saisir / vérifier</button>`, np && n50 === np) +
+    st(2, 'Temps sur 50 m', `${n50}/${np} présents ont un temps`, `<button class="btn ${n50 < np ? 'primary' : 'ghost'} small" data-go="perf50">✏️ Saisir / vérifier</button>`, np && n50 === np) +
     st(3, 'Groupes', ng ? `${ng} groupes · ${placed}/${np} présents placés` : 'à constituer', `<button class="btn ${placed < np ? 'primary' : 'ghost'} small" data-go="tgroupes">👥 Groupes</button>`, ng && placed === np);
   paintEvlEntry(); paintEvlGroups();
 }
@@ -750,7 +755,7 @@ function paintEvlGroups() {
       ${P.length ? `<div class="evl-hist">${P.map(p => { const it = passIT(c, p), sr = passStars(c, p);
         return `<div class="evl-row"><span><b>${esc(dn(c, p.d, p.dSnap))}</b> ➜ <b>${esc(dn(c, p.r, p.rSnap))}</b></span>
           <span>${p.fail ? '<span class="tag ko">raté</span>' : fmt(p.tEnd) + ' s'}</span><span class="meta">cible ${p.tgt != null ? fmt(p.tgt) + ' s' : '–'}</span>
-          <span>IT ${fit(it)}</span><span class="st">${sr != null ? '★'.repeat(sr) : ''}</span><button class="btn danger-ghost small" data-evdel="${p.id}">🗑</button></div>`; }).join('')}</div>` : ''}
+          <span>IT ${fit(it)}${p.gap != null ? `<span class="sub zt">Zt ${fgap(p.gap)} · ${ztPts(p.gap)} pt${ztPts(p.gap) > 1 ? 's' : ''}</span>` : p.fail ? '<span class="sub zt">Zt 0 pt</span>' : ''}</span><span class="st">${sr != null ? '★'.repeat(sr) : ''}</span><button class="btn danger-ghost small" data-evdel="${p.id}">🗑</button></div>`; }).join('')}</div>` : ''}
     </div>`;
   }).join('') : '<div class="empty">Constituez d\'abord les groupes (étape 3).</div>';
   $$('#evl-groups [data-ev]').forEach(t => t.onclick = () => evPick(t.dataset.ev, +t.dataset.evg));
@@ -775,6 +780,16 @@ function paintEvlEntry() {
   const D = S.settings.total, cb = cible100(c, evSel.d, evSel.r), tgt = cb != null ? cb * D / BASE : null;
   const t = evRun && evRun.t != null ? evRun.t : null;
   box.classList.remove('hidden');
+  if (!isProf()) {
+    box.innerHTML = `<div class="row between wrap"><div class="pc-names" style="font-size:1.15rem"><span class="role d">D</span> ${esc(dn(c, evSel.d))} <span class="arrow">➜</span> <span class="role r">R</span> ${esc(dn(c, evSel.r))}
+        <button class="btn ghost small" id="ev-swap">⇄</button></div>
+        <div class="target">🎯 Cible ${D} m : <b>${tgt != null ? fmt(tgt) + ' s' : '–'}</b></div></div>
+      <div class="row gap wrap center"><button class="btn primary big" id="ev-run">⏱ Chronométrer (Début · Entrée Zt · Fin Zt · Fin)</button><button class="btn ghost" id="ev-cancel">Annuler</button></div>`;
+    $('#ev-swap').onclick = () => { [evSel.d, evSel.r] = [evSel.r, evSel.d]; paintEvlEntry(); paintEvlGroups(); };
+    $('#ev-cancel').onclick = () => { evSel = { g: evSel.g, d: null, r: null }; paintEvlEntry(); paintEvlGroups(); };
+    $('#ev-run').onclick = evRun4;
+    return;
+  }
   box.innerHTML = `<div class="row between wrap"><div class="pc-names" style="font-size:1.15rem"><span class="role d">D</span> ${esc(dn(c, evSel.d))} <span class="arrow">➜</span> <span class="role r">R</span> ${esc(dn(c, evSel.r))}
       <button class="btn ghost small" id="ev-swap">⇄</button></div>
       <div class="target">🎯 Cible ${D} m : <b>${tgt != null ? fmt(tgt) + ' s' : '–'}</b></div></div>
@@ -789,8 +804,10 @@ function paintEvlEntry() {
       <button class="btn primary big" id="ev-save">Enregistrer</button>
       <button class="btn fail" id="ev-fail">✗ Passage raté</button>
       <button class="btn ghost" id="ev-cancel">Annuler</button>
+      <button class="btn ghost" id="ev-run">⏱ Chrono avec zone (4 tops)</button>
     </div>
-    <p class="hint center">Chronométrez avec Départ / Arrivée, ou tapez le temps relevé sur la fiche papier.</p>`;
+    <p class="hint center">Chronométrez avec Départ / Arrivée, ou tapez le temps relevé sur la fiche papier. Le temps dans la zone (note EPS) n'est mesuré qu'avec le chrono 4 tops (tablettes élèves).</p>`;
+  $('#ev-run').onclick = () => { if (evRun && evRun.t0 != null && evRun.t == null) { toast('Course en cours'); return; } evRun = null; evRun4(); };
   const prev = () => {
     const ms = parseTime($('#ev-time').value, 40);
     if (ms == null || cb == null) { $('#ev-preview').textContent = ''; return; }
@@ -805,6 +822,8 @@ function paintEvlEntry() {
   $('#ev-fail').onclick = () => evSave(true);
   $('#ev-save').onclick = () => evSave(false);
 }
+function evRun4() { const { d, r, g } = evSel; evSel = { g, d: null, r: null }; startRun(d, r, { les: 'ev', grp: g || null }); }
+const ztPts = g => g == null ? null : g > 0 ? 4 : g >= -8 ? 3 : g >= -15 ? 2 : g >= -20 ? 1 : 0;
 function evTick() { if (!evRun || evRun.t != null || view !== 'evl') return; const el = $('#ev-clock'); if (el) el.textContent = fmt(performance.now() - evRun.t0); raf = requestAnimationFrame(evTick); }
 function evSave(failed) {
   const c = cls(), D = S.settings.total;
@@ -1756,7 +1775,7 @@ $('#sel-clear').onclick = () => { sel = { d: null, r: null }; renderTiles(); };
    ===================================================================== */
 const VID = { stream: null, rec: null, chunks: [], t0: 0, url: null, marks: null, pid: null, busy: false, timer: null };
 const vidOK = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
-const vidOn = r => !!(r && S.settings.vid && (r.les === 'tg' ? S.settings.vid.tg : S.settings.vid.rel));
+const vidOn = r => !!(r && r.les !== 'ev' && S.settings.vid && (r.les === 'tg' ? S.settings.vid.tg : S.settings.vid.rel));
 function paintVidSet() {
   $('#vid-flag-rel').classList.toggle('hidden', !(S.settings.vid && S.settings.vid.rel));
   $('#vid-flag-tg').classList.toggle('hidden', !(S.settings.vid && S.settings.vid.tg));
@@ -1876,6 +1895,7 @@ function renderChrono() {
   if (!run) { show('tiles'); return; }
   paintPair();
   if (run.les === 'tg') { $('#tb-main').textContent = '③ Travail de groupe'; $('#tb-sub').textContent = `Groupe ${run.grp} · chronomètre`; }
+  if (run.les === 'ev') { $('#tb-main').textContent = '④ Évaluation'; $('#tb-sub').textContent = `${run.grp ? 'Groupe ' + run.grp + ' · ' : ''}chronomètre avec zone de transmission`; }
   $('#c-cam').classList.toggle('hidden', !vidOn(run));
   if (vidOn(run)) vidStart();
   const st = step();
@@ -1912,7 +1932,7 @@ $('#c-undo').onclick = () => {
 $('#c-reset').onclick = () => { if (!run) return; run.t0 = null; run.marks = []; cancelAnimationFrame(raf); vidDiscard(); renderChrono(); };
 $('#c-cancel').onclick = () => {
   if (run && run.t0 !== null && !confirm('Revenir aux élèves sans enregistrer ? (si le passage a échoué, utilisez « Passage raté »)')) return;
-  const back = run && run.les === 'tg' ? 'tg' : 'tiles';
+  const back = run && run.les === 'tg' ? 'tg' : run && run.les === 'ev' ? 'evl' : 'tiles';
   run = null; stopClock(); vidDiscard(); show(back);
 };
 async function requestWake() { try { if ('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
@@ -1929,7 +1949,7 @@ function toEval(failed) {
     d: run.d, r: run.r, dSnap: snap(c, run.d), rSnap: snap(c, run.r),
     tIn: tIn != null ? Math.round(tIn) : null, tZt: sp2 ? Math.round(sp2.tZt) : null, tEnd: !failed && tEnd != null ? Math.round(tEnd) : null,
     cible: cible100(c, run.d, run.r), fail: failed ? '' : null, c: {}, cfg: { total, zt },
-    ...(run.les === 'tg' ? { les: 'tg', grp: run.grp, tx: lastTx(c, run.d, run.r) || {}, txPrev: lastTx(c, run.d, run.r) } : {})
+    ...(run.les === 'tg' ? { les: 'tg', grp: run.grp, tx: lastTx(c, run.d, run.r) || {}, txPrev: lastTx(c, run.d, run.r) } : run.les === 'ev' ? { les: 'ev', grp: run.grp } : {})
   });
   vidFinish(S.pending.id, run, failed);
   save(); run = null; show('eval');
@@ -1955,16 +1975,17 @@ function renderEval() {
       <div><span>Vitesse dans la Zt</span><b>${fnum(p.vZt, 2)} m/s</b><span>${fnum(p.vZt * 3.6)} km/h</span></div>
       <div><span>Vitesse hors Zt</span><b>${fnum(p.vR, 2)} m/s</b><span>${fnum(p.vR * 3.6)} km/h</span></div>
     </div>
-    <div class="verdict ${gapCls(p.gap)}">Écart : ${fgap(p.gap)} ${p.gap > 0 ? '(plus rapide dans la zone)' : '(plus lent dans la zone)'}</div>`
+    <div class="verdict ${gapCls(p.gap)}">Écart : ${fgap(p.gap)} ${p.gap > 0 ? '(plus rapide dans la zone)' : '(plus lent dans la zone)'}${p.les === 'ev' ? ` → <b>${ztPts(p.gap)}/4 pts</b> zone (note EPS)` : ''}</div>`
     : `<h3>Écart de vitesse dans la Zt</h3><p class="hint">Non calculable (chronométrage incomplet).</p>`;
   renderTx(p);
   if (p.les === 'tg') { $('#tb-main').textContent = '③ Travail de groupe'; $('#tb-sub').textContent = `Groupe ${p.grp} · critères et caractéristiques`; }
+  if (p.les === 'ev') { $('#tb-main').textContent = '④ Évaluation'; $('#tb-sub').textContent = `${p.grp ? 'Groupe ' + p.grp + ' · ' : ''}résultat du passage`; }
   $('#e-fail').classList.toggle('hidden', p.fail === null);
   $('#fail-btns').innerHTML = FAILS.map(f => `<button class="btn no ${p.fail === f.k ? 'chosen' : ''}" data-fail="${f.k}">${f.label}</button>`).join('');
   $$('#fail-btns .btn').forEach(b => b.onclick = () => { p.fail = b.dataset.fail; save(); renderEval(); });
   const withVid = VID.pid === p.id && (VID.url || VID.busy);
   renderVideoBox(p);
-  $('#e-crits').innerHTML = withVid ? '' : critHTML(c, p, false);
+  $('#e-crits').innerHTML = withVid || p.les === 'ev' ? '' : critHTML(c, p, false);
   if (withVid) $('#v-crit').innerHTML = critHTML(c, p, true) + `<div class="v-save">${missing(p).length ? `<span>🔒 ${missing(p).length} à renseigner</span>` : '<button class="btn primary" id="v-save">✓ Enregistrer le passage</button>'}</div>`;
   $$('#e-crits [data-k], #v-crit [data-k]').forEach(b => b.onclick = () => {
     const k = b.dataset.k;
@@ -1992,7 +2013,7 @@ function critHTML(c, p, compact) {
   }).join('');
 }
 function missing(p) {
-  const m = crits(cls()).filter(cr => p.c[cr.k] === undefined).map(cr => cr.k);
+  const m = p.les === 'ev' ? [] : crits(cls()).filter(cr => p.c[cr.k] === undefined).map(cr => cr.k);
   if (p.fail === '') m.unshift('fail');
   if (p.les === 'tg') txs(cls()).forEach(t => { if (!p.tx || p.tx[t.k] == null) m.push('tx'); });
   return m;
@@ -2009,7 +2030,7 @@ $('#e-save').onclick = () => {
   cls().passages.push(p); S.pending = null; save(); vidClear();
   delete p.txPrev;
   toast(p.fail ? 'Passage raté enregistré (1 ★)' : `Passage enregistré${p.stars ? ' · ' + '★'.repeat(p.stars) : ''}`);
-  show(p.les === 'tg' ? 'tg' : 'tiles');
+  show(p.les === 'tg' ? 'tg' : p.les === 'ev' ? 'evl' : 'tiles');
 };
 $('#e-redo').onclick = () => {
   const p = S.pending; if (!p) return;
@@ -2062,8 +2083,10 @@ function result(c, sid, F) {
   const bestRel = bestP ? teqOf(bestP) : null, bestRelReal = bestP ? bestP.tEnd : null;
   const mixed = !!(bestP && isMixed(c, bestP));          // meilleur relais en binôme mixte → barème moyen F/G
   const col = ptsFrom(B_COL, mixed ? 'M' : sexe, bestRel);
-  const starsList = mine.map(p => passStars(c, p)).filter(x => x != null).sort((a, b) => b - a);
-  const used = starsList.slice(0, 4), n = used.length, sum = used.reduce((a, b) => a + b, 0);
+  // 4 passages retenus : plus d'étoiles, puis meilleur IT (les mêmes servent à la note Zt)
+  const kept = mine.map(p => ({ p, st: passStars(c, p), it: passIT(c, p) })).filter(x => x.st != null)
+    .sort((a, b) => b.st - a.st || (a.it ?? 99) - (b.it ?? 99)).slice(0, 4);
+  const used = kept.map(x => x.st), n = used.length, sum = used.reduce((a, b) => a + b, 0);
   const stars = n ? Math.min(16, Math.round(sum * 4 / n)) : null;
   const cs = critStats(c, mine), y = cs.reduce((a, x) => a + x.sumScore, 0), o = cs.reduce((a, x) => a + x.nScored, 0);
   const rate = o ? y / o : null;
@@ -2071,7 +2094,10 @@ function result(c, sid, F) {
   const parts = [ind, col, et ? et.note : null];
   const total = parts.some(x => x != null) ? parts.reduce((a, x) => a + (x || 0), 0) : null;
   const its = mine.map(p => passIT(c, p)).filter(x => x != null);
-  return { sid, s, sexe, b50, ind, mine, bestRel, bestRelReal, col, mixed, used, n, sum, stars, rate, et, total,
+  const zl = kept.map(x => x.p.fail ? 0 : ztPts(x.p.gap)).filter(x => x != null);
+  const zt = zl.length ? zl.reduce((a, b) => a + b, 0) * 2 / zl.length : null;   // moyenne /4 → /8
+  const eps = total != null && zt != null ? (total + zt) * 12 / 20 : null;
+  return { zt, nZt: zl.length, eps, sid, s, sexe, b50, ind, mine, bestRel, bestRelReal, col, mixed, used, n, sum, stars, rate, et, total,
     complete: parts.every(x => x != null) && n >= 2, nFail: mine.filter(p => p.fail).length,
     itMean: its.length ? its.reduce((a, b) => a + b, 0) / its.length : null };
 }
@@ -2085,14 +2111,15 @@ function renderBilan(keepFilters) {
   const avg = (arr, f) => { const v = arr.map(f).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   const allIT = list.map(p => passIT(c, p)).filter(x => x != null);
   $('#b-kpi').innerHTML = `
-    <div><span>Moyenne de la classe</span><b>${fnum(avg(comp, r => r.total), 2)}<small style="display:inline">/12</small></b><small>${comp.length} élève(s) complet(s) / ${R.length}</small></div>
+    <div><span>Moyenne note Bac</span><b>${fnum(avg(comp, r => r.total), 2)}<small style="display:inline">/12</small></b><small>${comp.length} élève(s) complet(s) / ${R.length}</small></div>
+    <div><span>Moyenne note EPS</span><b>${fnum(avg(comp, r => r.eps), 2)}<small style="display:inline">/12</small></b><small>zone de transmission ${fnum(avg(R, r => r.zt), 2)} /8</small></div>
     <div><span>Vitesse indiv. · coll.</span><b>${fnum(avg(R, r => r.ind), 2)} · ${fnum(avg(R, r => r.col), 2)}</b><small>moyennes /3</small></div>
     <div><span>Étoiles moyennes</span><b>${fnum(avg(R, r => r.stars), 1)} ★</b><small>IT moyen ${allIT.length ? fit(allIT.reduce((a, b) => a + b, 0) / allIT.length) : '–'}</small></div>
     <div><span>Relais courus</span><b>${st.N}</b><small>${st.nFail} raté(s) · ${F.spr.length} chronos 50 m</small></div>`;
   $('#b-notes').innerHTML = `
     <tr><th style="text-align:left">Élève</th><th>Sexe</th><th>Groupe</th><th>50 m</th><th>Vit. indiv.<br><small>/3</small></th>
       <th>Meilleur relais<br><small>(équiv. 100 m)</small></th><th>Vit. coll.<br><small>/3</small></th>
-      <th>Courses</th><th>Étoiles<br><small>/16</small></th><th>Degré</th><th>Eff. tech.<br><small>/6</small></th><th class="tot">Total<br><small>/12</small></th></tr>
+      <th>Courses</th><th>Étoiles<br><small>/16</small></th><th>Degré</th><th>Eff. tech.<br><small>/6</small></th><th class="tot">Note Bac<br><small>/12</small></th><th title="Moyenne des points Zt (4/3/2/1/0) des 4 passages retenus, ×2">Zone Zt<br><small>/8</small></th><th class="tot eps">Note EPS<br><small>(Bac + Zt) /12</small></th></tr>
     ${R.map(r => `<tr class="${r.total == null ? 'none' : ''}">
       <td class="name">${esc(dnStudent(c, r.s))}</td><td>${sexBadge(r.sexe)}</td><td>${c.tg[r.sid] || '–'}</td>
       <td>${r.b50 != null ? fmt(r.b50) + ' s' : '–'}</td>
@@ -2104,6 +2131,8 @@ function renderBilan(keepFilters) {
       <td>${r.et ? r.et.deg.n : '–'}</td>
       <td>${r.et ? `<select data-ov="${esc(r.sid)}" class="${r.et.manual ? 'manual' : ''}">${r.et.allowed.map(v => `<option value="${v}" ${v === r.et.note ? 'selected' : ''}>${fpt(v)}${v === r.et.auto ? ' (auto)' : ''}</option>`).join('')}</select><span class="sub">critères ${r.rate != null ? pct(r.rate, 1) + ' %' : '–'}</span>` : '–'}</td>
       <td class="tot">${r.total != null ? fpt(Math.round(r.total * 100) / 100) : '–'}${r.total != null && !r.complete ? '<span class="flag">incomplet</span>' : ''}</td>
+      <td>${r.zt != null ? fpt(Math.round(r.zt * 100) / 100) + `<span class="sub">${r.nZt} passage${r.nZt > 1 ? 's' : ''}</span>` : '<span class="sub">pas de chrono Zt</span>'}</td>
+      <td class="tot eps">${r.eps != null ? fpt(Math.round(r.eps * 100) / 100) : '–'}</td>
     </tr>`).join('')}`;
   $$('#b-notes [data-ov]').forEach(s => s.onchange = () => {
     const r = R.find(x => x.sid === s.dataset.ov), v = parseFloat(s.value);
@@ -2188,12 +2217,12 @@ $('#exp-xlsx').onclick = () => {
   const c = cls(); const R = renderBilan(true); const F = filtered(c); const st = stats(c, F.rel);
   const nm = (id, sn) => { const s = stu(c, id) || sn || {}; return [s.nom || '', s.prenom || '']; };
   const notes = [['Nom', 'Prénom', 'Sexe', 'Groupe', 'Meilleur 50 m (s)', 'Vitesse individuelle /3', 'Meilleur relais (s)', 'Relais équiv. 100 m (s)', 'Barème relais', 'Vitesse collective /3',
-    'Courses', 'Ratées', 'Étoiles retenues', 'Total étoiles /16', 'Extrapolé', 'Degré', '% critères', 'Efficacité technique /6', 'Ajusté', 'TOTAL /12', 'Complet']]
+    'Courses', 'Ratées', 'Étoiles retenues', 'Total étoiles /16', 'Extrapolé', 'Degré', '% critères', 'Efficacité technique /6', 'Ajusté', 'NOTE BAC /12', 'Zt /8 (moy. 4 passages retenus)', 'NOTE EPS /12', 'Complet']]
     .concat([...R].sort((a, b) => (a.s.nom + a.s.prenom).localeCompare(b.s.nom + b.s.prenom, 'fr')).map(r => [
       r.s.nom, r.s.prenom, r.sexe, c.tg[r.sid] || '', sec(r.b50), r.ind ?? '', sec(r.bestRelReal), sec(r.bestRel), r.bestRel == null ? '' : r.mixed ? 'Mixte' : r.sexe === 'F' ? 'Filles' : r.sexe === 'G' ? 'Garçons' : '', r.col ?? '',
       r.mine.length, r.nFail, r.used.join('+'), r.stars ?? '', r.n && r.n < 4 ? `oui (${r.n} courses)` : '', r.et ? r.et.deg.n : '',
       r.rate != null ? pct(r.rate, 1) : '', r.et ? r.et.note : '', r.et && r.et.manual ? 'oui' : '',
-      r.total != null ? Math.round(r.total * 100) / 100 : '', r.complete ? 'oui' : 'non']));
+      r.total != null ? Math.round(r.total * 100) / 100 : '', r.zt != null ? Math.round(r.zt * 100) / 100 : '', r.eps != null ? Math.round(r.eps * 100) / 100 : '', r.complete ? 'oui' : 'non']));
   const rel = [['Date', 'Tablette', 'Démarreur – Nom', 'Démarreur – Prénom', 'Relayeur – Nom', 'Relayeur – Prénom', 'Distance (m)', 'Statut', 'Cause',
     'Temps (s)', 'Cible (s)', 'IT équiv. 100 m (s)', 'Étoiles', 'Entrée Zt (s)', 'Temps Zt (s)', 'V Zt (m/s)', 'V hors Zt (m/s)', 'Écart Zt (%)', ...crits(c).map(cr => cr.l),
     'Leçon', 'Groupe de travail', ...txs(c).map(t => t.l + (t.unit ? ` (${t.unit})` : ''))]]

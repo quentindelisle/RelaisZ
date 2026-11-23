@@ -514,3 +514,11 @@ label.check.big{font-size:1.05rem;padding:8px 12px;border:1.5px solid var(--line
 .evl-chrono .cbtn{min-height:96px}
 .evl-chrono .cbtn[data-step="3"].next{background:linear-gradient(180deg,#f29646,#e0701f)}
 .evl-back{background:var(--orange)!important;border-color:var(--orange)!important}
+#ev-time{width:120px;padding:10px;border:2px solid var(--orange);border-radius:12px;font:inherit;font-size:1.3rem;font-weight:900;text-align:center;color:var(--navy)}
+.evl-step b{color:var(--navy)}
+.evl-step .btn{flex:none}
+/* v5.1 – évaluation : zone de transmission, note EPS */
+.home-btn.p4{border-bottom-color:#7c3aed}
+td.tot.eps{color:#5b21b6;background:#f5f0ff}
+th.tot.eps{background:#e9ddff}
+.evl-row .sub.zt{display:block;font-size:.78rem;color:var(--muted,#5b6b86);font-weight:600}
