@@ -268,7 +268,7 @@ const TITLES = {
   groupes: ['Groupes', 'Une tablette par groupe pour le relais'], send: ['Envoyer', ''], recv: ['Recevoir', ''],
   group: ['Élèves de la tablette', '50 m'], sprint: ['① 50 m départ arrêté', ''], sprun: ['① 50 m', 'Chronomètre'],
   appel: ['Appel', 'Présents et absents du jour'], perf50: ['Temps sur 50 m', 'Correction manuelle'], evl: ['Leçon d\'évaluation', 'Appel · 50 m · groupes · passages'],
-  tgroupes: ['Groupes de travail', 'Glisser les élèves dans les groupes (3 ou 4)'], tg: ['③ Travail de groupe', ''],
+  tgroupes: ['Groupes de travail', 'Glisser les élèves dans les groupes (3 ou 4 conseillés, plus possible)'], tg: ['③ Travail de groupe', ''],
   tiles: ['② Relais', ''], chrono: ['② Relais', 'Chronomètre'], eval: ['② Relais', 'Critères du passage'], bilan: ['Bilan chiffré', '']
 };
 let view = 'role';
@@ -899,12 +899,23 @@ $('#evl-pdf').onclick = () => {
     doc.setTextColor(...navy); doc.setFont('helvetica', 'bold'); doc.setFontSize(11); T(`Binômes possibles (${order.length}) : choisissez la ligne du binôme qui passe`, M, y); y += 3;
     const cols = [['N°', 9], ['Démarreur', 40], ['Relayeur', 40], ['Cible', 22], ['Chrono', 28], ['2e essai', 28], ['Étoiles', 19]];
     const tw = cols.reduce((a, x) => a + x[1], 0);
-    doc.setFillColor(...rgb); doc.rect(M, y, tw, 7.5, 'F'); if (light) { doc.setDrawColor(60); doc.rect(M, y, tw, 7.5); }
-    doc.setTextColor(...ink); doc.setFontSize(9.5);
-    let x = M; cols.forEach(([l, w]) => { T(l, x + 1.5, y + 5.1); x += w; }); y += 7.5;
-    const RH = order.length > 12 ? 8 : 9.5, extra = Math.max(0, Math.min(4, Math.floor((H - 18 - y - order.length * RH) / RH)));
+    let x;
+    const thead = () => {
+      doc.setFillColor(...rgb); doc.rect(M, y, tw, 7.5, 'F'); if (light) { doc.setDrawColor(60); doc.rect(M, y, tw, 7.5); }
+      doc.setTextColor(...ink); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+      x = M; cols.forEach(([l, w]) => { T(l, x + 1.5, y + 5.1); x += w; }); y += 7.5;
+    };
+    thead();
+    const RH = order.length > 12 ? 8 : 9.5, room = Math.floor((H - 18 - y) / RH);
+    const extra = order.length <= room ? Math.min(4, room - order.length) : 3;   // quelques lignes libres pour des passages en plus
     const rows = [...order.map(([a, b]) => ({ a, b })), ...Array.from({ length: extra }, () => null)];
     rows.forEach((row, i) => {
+      if (y + RH > H - 10) {   // suite sur une nouvelle page, à la couleur du groupe
+        doc.addPage(); doc.setFillColor(...rgb); doc.rect(0, 0, W, 16, 'F'); doc.rect(0, 0, 5, H, 'F');
+        if (light) { doc.setDrawColor(60); doc.setLineWidth(0.6); doc.line(0, 16, W, 16); doc.line(5, 16, 5, H); doc.setLineWidth(0.2); }
+        doc.setTextColor(...ink); doc.setFont('helvetica', 'bold'); doc.setFontSize(16); T(`${g ? `GROUPE ${g} - ${cn.toUpperCase()}` : 'SANS GROUPE'} (suite)`, M, 11);
+        y = 24; thead();
+      }
       if (i % 2) { doc.setFillColor(246, 249, 253); doc.rect(M, y, tw, RH, 'F'); }
       doc.setDrawColor(190); doc.rect(M, y, tw, RH);
       x = M; cols.forEach(([, w]) => { doc.line(x, y, x, y + RH); x += w; });
@@ -1336,9 +1347,9 @@ function paintTg() {
   };
   board.innerHTML = Array.from({ length: tgCount + 1 }, (_, g) => g).map(g => {
     const mem = c.students.filter(s => (tgDraft[s.id] || 0) === g).sort((a, b) => (level(c, b.id) ?? -1e9) - (level(c, a.id) ?? -1e9));
-    const bad = g && mem.length && (mem.length < 3 || mem.length > 4);
+    const bad = g && mem.length && mem.length < 2;
     return `<div class="g-col ${g === 0 ? 'none' : ''} ${bad ? 'bad' : ''}" data-tcol="${g}" ${g ? `style="border-top:6px solid ${GCOL[gColIdx(tgColDraft, g)][1]}"` : ''}>
-      <div class="g-head">${g ? `<button class="gswatch" data-gsw="${g}" style="background:${GCOL[gColIdx(tgColDraft, g)][1]}" title="Changer la couleur"></button>Groupe ${g} · ${GCOL[gColIdx(tgColDraft, g)][0]}` : 'À placer'} <span>${mem.length} élève${mem.length > 1 ? 's' : ''}${g && mem.length ? ` · ${mem.length * (mem.length - 1)} binômes possibles` : ''}${bad ? ' · ⚠ 3 ou 4 conseillés' : ''}</span>${tgSel.size ? `<em>⬇ déposer ${tgSel.size > 1 ? `les ${tgSel.size} élèves` : 'ici'}</em>` : ''}</div>
+      <div class="g-head">${g ? `<button class="gswatch" data-gsw="${g}" style="background:${GCOL[gColIdx(tgColDraft, g)][1]}" title="Changer la couleur"></button>Groupe ${g} · ${GCOL[gColIdx(tgColDraft, g)][0]}` : 'À placer'} <span>${mem.length} élève${mem.length > 1 ? 's' : ''}${g && mem.length ? ` · ${mem.length * (mem.length - 1)} binômes possibles` : ''}${bad ? ' · ⚠ 2 élèves minimum' : g && mem.length > 4 ? ' · plus de 4 : on retiendra les courses faites' : ''}</span>${tgSel.size ? `<em>⬇ déposer ${tgSel.size > 1 ? `les ${tgSel.size} élèves` : 'ici'}</em>` : ''}</div>
       <div class="g-list">${mem.map(chip).join('') || '<span class="meta">Glissez des élèves ici</span>'}</div></div>`;
   }).join('');
   enableDrag(board);
@@ -1424,8 +1435,8 @@ function saveTg() {
   const c = cls(), sizes = {};
   Object.values(tgDraft).forEach(g => { if (g) sizes[g] = (sizes[g] || 0) + 1; });
   if (!Object.keys(sizes).length) { toast('Aucun élève dans les groupes'); return false; }
-  const bad = Object.entries(sizes).filter(([, n]) => n < 3 || n > 4).map(([g]) => g);
-  if (bad.length && !confirm(`Groupe(s) ${bad.join(', ')} : pas 3 ou 4 élèves. Valider quand même ?`)) return false;
+  const bad = Object.entries(sizes).filter(([, n]) => n < 2).map(([g]) => g);
+  if (bad.length && !confirm(`Groupe(s) ${bad.join(', ')} : un seul élève, aucun binôme possible. Valider quand même ?`)) return false;
   // numéros de groupes sans trou
   const used = [...new Set(Object.values(tgDraft).filter(Boolean))].sort((a, b) => a - b), ren = Object.fromEntries(used.map((g, i) => [g, i + 1]));
   c.tg = {}; Object.entries(tgDraft).forEach(([k, g]) => { if (g) c.tg[k] = ren[g]; });
