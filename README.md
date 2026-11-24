@@ -34,3 +34,14 @@ Mise à jour : incrémenter `CACHE` dans `sw.js`.
 ## v5.2 – Couleurs de groupe et fiche PDF
 - Chaque groupe a une couleur (Rouge, Bleu, Vert, Jaune…) : touchez la pastille dans « Groupes » pour la changer ; transmise aux tablettes avec la séance.
 - Fiche PDF d'évaluation : bandeau et bord de page à la couleur du groupe, cases à cocher par coureur, **tous les binômes possibles** (ordre qui évite d'enchaîner deux passages) avec leur **cible**, colonnes Chrono / 2e essai / Étoiles, quelques lignes libres.
+
+## v5.3 – Accès co-évaluateur
+- Nouveau rôle **📋 Co-évaluateur** (écran de départ ou bascule en haut : Élève / Co-éval. / Prof).
+- Co-évaluateur : 📷 Recevoir la séance → cocher les groupes évalués → ✍️ Saisir les passages : toucher le démarreur puis le relayeur, taper le temps lu au chronomètre (Entrée = enregistrer, ✗ = raté). Pas de chrono intégré. → 📤 Envoyer mes saisies au prof (QR).
+- Prof : Leçon d'évaluation → 📥 Récupérer les saisies (co-évaluateurs, tablettes) ; les passages s'ajoutent aux groupes et aux notes.
+- Fiche PDF : avertit si des 50 m manquent (cibles incomplètes) et propose de les saisir avant d'imprimer.
+
+## v5.3.1 – Note Bac protégée
+- Les passages d'évaluation chronométrés sur les **tablettes élèves** (4 tops) ne servent qu'à la zone de transmission (Zt /8 → note EPS) dès qu'un élève a des temps relevés par le prof ou un co-évaluateur. La note Bac ne dépend que de ces temps officiels, quel que soit l'ordre d'import.
+- Zt : pour chacun des 4 passages retenus, on prend le même passage mesuré par une tablette élève (même binôme, à ±5 min) ; sinon, les 4 meilleurs passages élèves.
+- Si un élève n'a QUE des temps de tablettes élèves, ils servent aussi à la note Bac (signalé « temps tablettes élèves »).

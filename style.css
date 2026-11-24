@@ -525,3 +525,4 @@ th.tot.eps{background:#e9ddff}
 /* v5.2 – couleurs des groupes */
 .gdot{display:inline-block;width:14px;height:14px;border-radius:50%;margin-right:6px;vertical-align:-2px;border:1.5px solid rgba(0,0,0,.35)}
 .gswatch{width:26px;height:26px;border-radius:50%;border:2px solid rgba(0,0,0,.35);margin-right:8px;vertical-align:middle;cursor:pointer;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.evl-row.el{opacity:.7;background:#faf7ff}

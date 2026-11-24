@@ -32,11 +32,12 @@
       <img src="icons/logo.png" alt="N'EPS Zones Relais – Académie de Nantes">
       <div><h1>Zones Relais</h1><p>Cette tablette est…</p></div>
     </div>
-    <div class="home-grid two">
+    <div class="home-grid">
       <button class="home-btn prof" data-role="prof"><span class="ico">🧑‍🏫</span>Tablette enseignant<small>paramètres, groupes, bilan</small></button>
       <button class="home-btn eleve" data-role="eleve"><span class="ico">🧒</span>Tablette élève<small>chronométrage 50 m et relais</small></button>
+      <button class="home-btn p4" data-role="coev"><span class="ico">📋</span>Co-évaluateur<small>saisie des temps de l'évaluation, par groupe</small></button>
     </div>
-    <p class="hint center">Le choix peut être changé à tout moment avec la bascule Élève / Prof en haut à droite (code enseignant pour revenir côté prof).</p>
+    <p class="hint center">Le choix peut être changé à tout moment avec la bascule Élève / Co-éval. / Prof en haut à droite (code enseignant pour revenir côté prof).</p>
   </section>
 
   <!-- ============ PROF : menu par étapes ============ -->
@@ -73,6 +74,7 @@
     <div class="evl-steps" id="evl-steps"></div>
     <div class="row gap wrap evl-actions">
       <button id="evl-pdf" class="btn ghost">📄 Fiche PDF de saisie (par groupe)</button>
+      <button class="btn ghost" data-go="recv-r">📥 Récupérer les saisies (co-évaluateurs, tablettes)</button>
       <button id="evl-notes" class="btn primary">📊 Notes de l'évaluation</button>
     </div>
     <h2>④ Passages <small>ordre libre · touchez le démarreur puis le relayeur dans un groupe · au-delà de 4 passages, les meilleurs sont retenus</small></h2>
@@ -408,7 +410,7 @@
     <div id="b-hist50" class="list"></div>
   </section>
 
-  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v5.2.1 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
+  <p class="credit"><img src="icons/logo.png" alt=""><br>Zones Relais v5.3.1 · N'EPS · by Quentin Delisle<br><small>Échanges QR : module du Kit N'EPS v1.3.1</small></p>
 </main>
 
 <div id="toast" class="toast"></div>

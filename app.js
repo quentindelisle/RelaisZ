@@ -132,7 +132,8 @@ const isAbs = (c, id) => absIds(c).includes(id);
 const present = c => c.students.filter(s => !isAbs(c, s.id));
 const stu = (c, id) => c.students.find(s => s.id === id);
 const isProf = () => S.mode === 'prof';
-const tabletName = () => S.settings.tablet || (isProf() ? 'Tablette prof' : 'Tablette élève');
+const isCoev = () => S.mode === 'coev';
+const tabletName = () => S.settings.tablet || (isProf() ? 'Tablette prof' : isCoev() ? 'Co-évaluateur' : 'Tablette élève');
 const crits = c => (c && c.crit && c.crit.length ? c.crit : DEFAULT_CRIT);
 /* Types de critères : Oui / Non · échelle de 1 (moins bien) à 10 (parfait) · libre (cases définies par l'enseignant) */
 const CTYPES = { yn: 'Oui / Non', scale: 'Échelle 1 à 10', free: 'Libre' };
@@ -277,6 +278,7 @@ function show(v) {
   if (!S.mode) v = 'role';
   else if (S.pending && v !== 'eval') v = 'eval';
   else if (!isProf() && PROF_ONLY.includes(v)) v = 'eleve';
+  else if (isCoev() && !['eleve', 'evl', 'send', 'recv'].includes(v)) v = 'eleve';
   if (['tiles', 'bilan', 'group', 'sprint', 'groupes', 'params', 'tg', 'tgroupes', 'appel', 'perf50', 'evl'].includes(v) && !cls()) { toast(isProf() ? 'Importez ou choisissez une classe' : 'Recevez d\'abord la séance (QR du prof)'); v = isProf() ? 'classes' : 'eleve'; }
   if (view === 'recv' && v !== 'recv') stopScan();
   if (!['tiles', 'tg', 'chrono', 'eval'].includes(v)) vidOff();
@@ -300,7 +302,8 @@ function renderTop() {
   const back = evlFlow && ['appel', 'perf50', 'tgroupes'].includes(view) ? `<button class="btn small tb-btn evl-back" data-go="evl">↩ Leçon d'évaluation</button>` : '';
   const homeBtn = back + (!['menu', 'eleve', 'role'].includes(view) ? `<button class="btn small tb-btn" data-nav="home">⌂ Accueil</button>` : '');
   $('#tb-right').innerHTML = S.mode ? homeBtn + `<div class="role-sw" role="group" aria-label="Interface">
-    <button class="${isProf() ? '' : 'on'}" data-sw="eleve"><span>🧒</span><b>Élève</b></button>
+    <button class="${S.mode === 'eleve' ? 'on' : ''}" data-sw="eleve"><span>🧒</span><b>Élève</b></button>
+    <button class="${isCoev() ? 'on' : ''}" data-sw="coev"><span>📋</span><b>Co-éval.</b></button>
     <button class="${isProf() ? 'on' : ''}" data-sw="prof"><span>🧑‍🏫</span><b>Prof</b></button></div>` : '';
 }
 function leaveOk() {
@@ -315,7 +318,7 @@ document.addEventListener('click', e => {
   else if (sw) {
     const to = sw.dataset.sw; if (to === S.mode) return;
     if (!leaveOk()) return;
-    if (to === 'eleve') { S.mode = 'eleve'; save(); show('eleve'); }
+    if (to === 'eleve' || to === 'coev') { S.mode = to; save(); show('eleve'); }
     else pinPad(() => { S.mode = 'prof'; save(); show('menu'); });
   }
   else if (go) { if (go.disabled) return; if (leaveOk()) openGo(go.dataset.go); }
@@ -413,6 +416,21 @@ function renderEleve() {
   }
   const mine = [...c.sprints, ...c.passages].filter(x => x.local);
   const unsent = mine.filter(x => !c.sentAt || x.ts > c.sentAt).length;
+  if (isCoev()) {
+    const nEv = c.passages.filter(p => p.les === 'ev' && p.local).length;
+    $('#el-body').innerHTML = `
+    <div class="home-grid">
+      <button class="home-btn" data-go="recv-s"><span class="ico">📷</span>Recevoir la séance<small>${c.tgN ? `${c.tgN} groupes reçus` : 'en attente des groupes du prof'} · rescanner si besoin</small></button>
+      <button class="home-btn p4" data-go="evl" ${c.tgN && c.myTg.length ? '' : 'disabled'}><span class="ico">✍️</span>Saisir les passages<small>${c.myTg.length ? `${c.myTg.map(g => gLbl(c, g)).join(' · ')} · ${nEv} passage${nEv > 1 ? 's' : ''} saisi${nEv > 1 ? 's' : ''}` : 'choisissez vos groupes ci-dessous'}</small></button>
+      <button class="home-btn send ${unsent ? 'todo' : ''}" data-go="send-r"><span class="ico">📤</span>Envoyer mes saisies au prof<small>${unsent ? unsent + ' nouvelle(s) saisie(s) à envoyer' : 'tout a été envoyé'}</small></button>
+    </div>
+    ${c.tgN ? `<h2>Groupes que j'évalue <small>touchez pour cocher / décocher (un ou plusieurs)</small></h2><div class="grp-pick">${Array.from({ length: c.tgN }, (_, i) => i + 1).map(g => {
+      const mem = tgMembers(c, g);
+      return `<button class="grp-btn tgb ${c.myTg.includes(g) ? 'on' : ''}" data-mytg="${g}"><b>${c.myTg.includes(g) ? '☑' : '☐'} ${gDot(c, g)}${gLbl(c, g)}</b><span>${mem.map(s => esc(dnStudent(c, s))).join(' · ') || '—'}</span></button>`;
+    }).join('')}</div>${c.myTg.length ? `<div class="row gap center"><button class="btn primary big" data-go="evl">✍️ Saisir les passages</button></div>` : ''}` : ''}`;
+    $$('[data-mytg]').forEach(b => b.onclick = () => { const g = +b.dataset.mytg; c.myTg = c.myTg.includes(g) ? c.myTg.filter(x => x !== g) : [...c.myTg, g].sort((a, b) => a - b); save(); renderEleve(); });
+    return;
+  }
   $('#el-body').innerHTML = `
     <div class="home-grid">
       <button class="home-btn" data-go="recv-s"><span class="ico">📷</span>Recevoir la séance<small>${c.tgN ? 'groupes reçus' : 'liste et paramètres reçus'} · rescanner si besoin</small></button>
@@ -479,7 +497,7 @@ function buildR(c) {
     s: mineS.map(s => [s.id, ix(s.sid), s.t, s.ts, s.endAt || null]),
     p: mineP.map(p => [p.id, p.ts, p.endAt || null, ix(p.d), ix(p.r), p.tIn, p.tZt, p.tEnd, p.cible ?? null,
       p.fail ? FAILS.findIndex(f => f.k === p.fail) + 1 : 0, ck.map(k => { const v = p.c[k]; return v === true ? 1 : v === false ? 0 : v ?? null; }),
-      p.cfg.total, p.cfg.zt, p.les === 'tg' ? 1 : p.les === 'ev' ? 2 : 0, p.grp || 0, p.tx ? tk.map(k => p.tx[k] ?? null) : null]) };
+      p.cfg.total, p.cfg.zt, p.les === 'tg' ? 1 : p.les === 'ev' ? 2 : 0, p.grp || 0, p.tx ? tk.map(k => p.tx[k] ?? null) : null, p.src === 'el' ? 1 : 0]) };
 }
 function mergeR(R) {
   if (!R || R.a !== APP || R.t !== 'R') throw new Error('Ce QR n\'est pas un envoi de résultats Zones Relais');
@@ -499,7 +517,7 @@ function mergeR(R) {
     if (ks.has(id)) { dup++; return; }
     const s = sid(i); c.sprints.push({ id, sid: s, snap: snap(c, s), t, ts, endAt, tablet: R.tab, local: false }); ns++;
   });
-  R.p.forEach(([id, ts, endAt, di, ri, tIn, tZt, tEnd, cible, fc, cs, total, zt, les, grp, tx]) => {
+  R.p.forEach(([id, ts, endAt, di, ri, tIn, tZt, tEnd, cible, fc, cs, total, zt, les, grp, tx, el]) => {
     if (kp.has(id)) { dup++; return; }
     const d = sid(di), r = sid(ri), cm = {};
     const crK = Object.fromEntries(crits(c).map(x => [x.k, x]));
@@ -510,7 +528,7 @@ function mergeR(R) {
     });
     c.passages.push(finalize({ id, ts, endAt, tablet: R.tab, local: false, d, r, dSnap: snap(c, d), rSnap: snap(c, r),
       tIn, tZt, tEnd, cible, fail: fc ? FAILS[fc - 1].k : null, c: cm, cfg: { total, zt },
-      les: les === 2 ? 'ev' : les ? 'tg' : null, grp: grp || null, tx: tx ? Object.fromEntries((R.tk || ['md', 'mr', 'sens', 'rep', 'mom']).map((k, j) => [k, tx[j]]).filter(([, v]) => v != null)) : undefined }));
+      les: les === 2 ? 'ev' : les ? 'tg' : null, ...(el ? { src: 'el' } : {}), grp: grp || null, tx: tx ? Object.fromEntries((R.tk || ['md', 'mr', 'sens', 'rep', 'mom']).map((k, j) => [k, tx[j]]).filter(([, v]) => v != null)) : undefined }));
     np++;
   });
   save();
@@ -716,6 +734,9 @@ function renderClasses() {
    ===================================================================== */
 let evSel = { g: null, d: null, r: null }, evRun = null;
 const evPass = c => c.passages.filter(p => p.les === 'ev');
+/* passage d'évaluation chronométré par une tablette ÉLÈVE (4 tops) : sert seulement à la zone de transmission (note EPS),
+   jamais à la note Bac dès que l'élève a des temps relevés par le prof ou un co-évaluateur */
+const isElEv = p => p.les === 'ev' && (p.src === 'el' || (p.src == null && !p.local && p.tIn != null));
 /* couleurs des groupes (chasubles) */
 const GCOL = [['Rouge', '#e53935'], ['Bleu', '#1e66d0'], ['Vert', '#2e9d4a'], ['Jaune', '#f2c200'], ['Orange', '#f57c00'], ['Violet', '#7e3ab5'],
   ['Rose', '#e84f9a'], ['Marron', '#8d5a2b'], ['Noir', '#222222'], ['Turquoise', '#00a3a3'], ['Gris', '#8a94a6'], ['Blanc', '#ffffff']];
@@ -748,6 +769,7 @@ function evGroups(c) {
 function renderEvl() {
   const el = !isProf();
   $('#evl-steps').classList.toggle('hidden', el); $('.evl-actions').classList.toggle('hidden', el);
+  if (el && isCoev()) { $('#tb-main').textContent = '✍️ Co-évaluation'; $('#tb-sub').textContent = `${cls().myTg.map(g => gLbl(cls(), g)).join(' · ')} · temps relevé au chronomètre`; paintEvlEntry(); paintEvlGroups(); return; }
   if (el) { $('#tb-main').textContent = '④ Évaluation'; $('#tb-sub').textContent = `Groupe${cls().myTg.length > 1 ? 's' : ''} ${cls().myTg.join(', ')} · chrono 4 tops (zone de transmission)`; paintEvlEntry(); paintEvlGroups(); return; }
   const c = cls(), np = present(c).length, n50 = present(c).filter(s => best50(c, s.id) != null).length;
   const appelOk = c.absent && c.absent.day === today(), ng = c.tgN || 0, placed = present(c).filter(s => c.tg[s.id]).length;
@@ -759,7 +781,7 @@ function renderEvl() {
   paintEvlEntry(); paintEvlGroups();
 }
 function evStats(c, sid) {
-  const P = evPass(c).filter(p => p.d === sid || p.r === sid), stars = P.map(p => passStars(c, p)).filter(x => x != null).sort((a, b) => b - a);
+  const A = evPass(c).filter(p => p.d === sid || p.r === sid), off = A.filter(p => !isElEv(p)), P = off.length ? off : A, stars = P.map(p => passStars(c, p)).filter(x => x != null).sort((a, b) => b - a);
   return { n: P.length, nd: P.filter(p => p.d === sid).length, nr: P.filter(p => p.r === sid).length, best: stars.slice(0, 4) };
 }
 function paintEvlGroups() {
@@ -775,7 +797,7 @@ function paintEvlGroups() {
           <span class="foot"><span class="count">${e.n} passage${e.n > 1 ? 's' : ''}${e.n ? ` (D ${e.nd} · R ${e.nr})` : ''} ${e.best.length ? '· ' + e.best.map(x => '★'.repeat(x)).join(' ') : ''}</span><span class="rec" data-sid="${esc(s.id)}"></span></span>
         </button>`; }).join('')}</div>
       ${P.length ? `<div class="evl-hist">${P.map(p => { const it = passIT(c, p), sr = passStars(c, p);
-        return `<div class="evl-row"><span><b>${esc(dn(c, p.d, p.dSnap))}</b> ➜ <b>${esc(dn(c, p.r, p.rSnap))}</b></span>
+        return `<div class="evl-row ${isElEv(p) ? 'el' : ''}"><span><b>${esc(dn(c, p.d, p.dSnap))}</b> ➜ <b>${esc(dn(c, p.r, p.rSnap))}</b>${isElEv(p) ? '<span class="sub zt">tablette élève · zone seulement</span>' : ''}</span>
           <span>${p.fail ? '<span class="tag ko">raté</span>' : fmt(p.tEnd) + ' s'}</span><span class="meta">cible ${p.tgt != null ? fmt(p.tgt) + ' s' : '–'}</span>
           <span>IT ${fit(it)}${p.gap != null ? `<span class="sub zt">Zt ${fgap(p.gap)} · ${ztPts(p.gap)} pt${ztPts(p.gap) > 1 ? 's' : ''}</span>` : p.fail ? '<span class="sub zt">Zt 0 pt</span>' : ''}</span><span class="st">${sr != null ? '★'.repeat(sr) : ''}</span><button class="btn danger-ghost small" data-evdel="${p.id}">🗑</button></div>`; }).join('')}</div>` : ''}
     </div>`;
@@ -802,7 +824,7 @@ function paintEvlEntry() {
   const D = S.settings.total, cb = cible100(c, evSel.d, evSel.r), tgt = cb != null ? cb * D / BASE : null;
   const t = evRun && evRun.t != null ? evRun.t : null;
   box.classList.remove('hidden');
-  if (!isProf()) {
+  if (!isProf() && !isCoev()) {
     box.innerHTML = `<div class="row between wrap"><div class="pc-names" style="font-size:1.15rem"><span class="role d">D</span> ${esc(dn(c, evSel.d))} <span class="arrow">➜</span> <span class="role r">R</span> ${esc(dn(c, evSel.r))}
         <button class="btn ghost small" id="ev-swap">⇄</button></div>
         <div class="target">🎯 Cible ${D} m : <b>${tgt != null ? fmt(tgt) + ' s' : '–'}</b></div></div>
@@ -815,21 +837,22 @@ function paintEvlEntry() {
   box.innerHTML = `<div class="row between wrap"><div class="pc-names" style="font-size:1.15rem"><span class="role d">D</span> ${esc(dn(c, evSel.d))} <span class="arrow">➜</span> <span class="role r">R</span> ${esc(dn(c, evSel.r))}
       <button class="btn ghost small" id="ev-swap">⇄</button></div>
       <div class="target">🎯 Cible ${D} m : <b>${tgt != null ? fmt(tgt) + ' s' : '–'}</b></div></div>
-    <div class="evl-chrono">
+    ${isCoev() ? '' : `<div class="evl-chrono">
       <div class="clock small" id="ev-clock">${t != null ? fmt(t) : '0,00'}</div>
       <button class="cbtn ${!evRun || evRun.t0 == null ? 'next' : 'done'}" data-step="0" id="ev-go" ${evRun && evRun.t0 != null ? 'disabled' : ''}>Départ</button>
       <button class="cbtn ${evRun && evRun.t0 != null && t == null ? 'next' : ''}" data-step="3" id="ev-stop" ${evRun && evRun.t0 != null && t == null ? '' : 'disabled'}>Arrivée</button>
-    </div>
+    </div>`}
     <div class="row gap wrap center">
       <label class="inline">Temps (s) <input id="ev-time" class="t50" type="text" inputmode="decimal" placeholder="ex. 14,52" value="${t != null ? fmt(t) : ''}"></label>
       <span id="ev-preview" class="meta"></span>
       <button class="btn primary big" id="ev-save">Enregistrer</button>
       <button class="btn fail" id="ev-fail">✗ Passage raté</button>
       <button class="btn ghost" id="ev-cancel">Annuler</button>
-      <button class="btn ghost" id="ev-run">⏱ Chrono avec zone (4 tops)</button>
+      ${isCoev() ? '' : '<button class="btn ghost" id="ev-run">⏱ Chrono avec zone (4 tops)</button>'}
     </div>
-    <p class="hint center">Chronométrez avec Départ / Arrivée, ou tapez le temps relevé sur la fiche papier. Le temps dans la zone (note EPS) n'est mesuré qu'avec le chrono 4 tops (tablettes élèves).</p>`;
-  $('#ev-run').onclick = () => { if (evRun && evRun.t0 != null && evRun.t == null) { toast('Course en cours'); return; } evRun = null; evRun4(); };
+    ${isCoev() ? '<p class="hint center">Tapez le temps lu sur le chronomètre, puis Enregistrer (ou ✗ si le passage est raté).</p>' : `<p class="hint center">Chronométrez avec Départ / Arrivée, ou tapez le temps relevé sur la fiche papier. Le temps dans la zone (note EPS) n'est mesuré qu'avec le chrono 4 tops (tablettes élèves).</p>`}`;
+  if (isCoev()) { setTimeout(() => { const i = $('#ev-time'); if (i) i.focus(); }, 50); }
+  if ($('#ev-run')) $('#ev-run').onclick = () => { if (evRun && evRun.t0 != null && evRun.t == null) { toast('Course en cours'); return; } evRun = null; evRun4(); };
   const prev = () => {
     const ms = parseTime($('#ev-time').value, 40);
     if (ms == null || cb == null) { $('#ev-preview').textContent = ''; return; }
@@ -837,9 +860,10 @@ function paintEvlEntry() {
     $('#ev-preview').innerHTML = `IT ${fit(it)} · <span class="st">${'★'.repeat(starsFromIT(it))}</span>`;
   };
   $('#ev-time').oninput = prev; prev();
+  $('#ev-time').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); evSave(false); } };
   $('#ev-swap').onclick = () => { [evSel.d, evSel.r] = [evSel.r, evSel.d]; paintEvlEntry(); paintEvlGroups(); };
-  $('#ev-go').addEventListener('pointerdown', e => { e.preventDefault(); evRun = { t0: performance.now(), t: null }; requestWake(); paintEvlEntry(); evTick(); });
-  $('#ev-stop').addEventListener('pointerdown', e => { e.preventDefault(); if (!evRun || evRun.t0 == null) return; evRun.t = performance.now() - evRun.t0; evRun.endAt = Date.now(); cancelAnimationFrame(raf); releaseWake(); paintEvlEntry(); });
+  if ($('#ev-go')) $('#ev-go').addEventListener('pointerdown', e => { e.preventDefault(); evRun = { t0: performance.now(), t: null }; requestWake(); paintEvlEntry(); evTick(); });
+  if ($('#ev-stop')) $('#ev-stop').addEventListener('pointerdown', e => { e.preventDefault(); if (!evRun || evRun.t0 == null) return; evRun.t = performance.now() - evRun.t0; evRun.endAt = Date.now(); cancelAnimationFrame(raf); releaseWake(); paintEvlEntry(); });
   $('#ev-cancel').onclick = () => { evSel = { g: evSel.g, d: null, r: null }; evRun = null; cancelAnimationFrame(raf); releaseWake(); paintEvlEntry(); paintEvlGroups(); };
   $('#ev-fail').onclick = () => evSave(true);
   $('#ev-save').onclick = () => evSave(false);
@@ -865,6 +889,8 @@ $('#evl-pdf').onclick = () => {
   if (!window.jspdf) { toast('Module PDF indisponible'); return; }
   const c = cls(), D = S.settings.total, gs = evGroups(c);
   if (!gs.length) { toast('Constituez d\'abord les groupes'); return; }
+  const no50 = gs.flatMap(x => x.mem).filter(s => best50(c, s.id) == null);
+  if (no50.length && confirm(`Cibles incomplètes : pas de temps sur 50 m pour ${no50.map(s => dnStudent(c, s)).join(', ')}.\n\nOK = saisir ces temps maintenant · Annuler = imprimer quand même`)) { evlFlow = true; show('perf50'); return; }
   const doc = new jspdf.jsPDF({ unit: 'mm', format: 'a4' }), W = 210, H = 297, M = 12, navy = [2, 36, 98], grey = [91, 107, 134];
   const T = (t, x, y, o) => doc.text(pdfSafe(t), x, y, o);
   gs.forEach(({ g, mem }, gi) => {
@@ -2001,7 +2027,7 @@ function toEval(failed) {
     d: run.d, r: run.r, dSnap: snap(c, run.d), rSnap: snap(c, run.r),
     tIn: tIn != null ? Math.round(tIn) : null, tZt: sp2 ? Math.round(sp2.tZt) : null, tEnd: !failed && tEnd != null ? Math.round(tEnd) : null,
     cible: cible100(c, run.d, run.r), fail: failed ? '' : null, c: {}, cfg: { total, zt },
-    ...(run.les === 'tg' ? { les: 'tg', grp: run.grp, tx: lastTx(c, run.d, run.r) || {}, txPrev: lastTx(c, run.d, run.r) } : run.les === 'ev' ? { les: 'ev', grp: run.grp } : {})
+    ...(run.les === 'tg' ? { les: 'tg', grp: run.grp, tx: lastTx(c, run.d, run.r) || {}, txPrev: lastTx(c, run.d, run.r) } : run.les === 'ev' ? { les: 'ev', grp: run.grp, ...(isProf() ? {} : { src: 'el' }) } : {})
   });
   vidFinish(S.pending.id, run, failed);
   save(); run = null; show('eval');
@@ -2129,7 +2155,10 @@ function stats(c, list) {
 function result(c, sid, F) {
   const s = stu(c, sid) || {}; const sexe = s.sexe || '';
   const b50 = best50(c, sid, F.spr), ind = ptsFrom(B_IND, sexe, b50);
-  const mine = F.rel.filter(p => p.d === sid || p.r === sid);
+  const all = F.rel.filter(p => p.d === sid || p.r === sid);
+  const elP = all.filter(isElEv), offP = all.filter(p => p.les === 'ev' && !isElEv(p));
+  const elOnly = elP.length > 0 && !offP.length;           // aucun temps prof / co-évaluateur : on garde les temps élèves
+  const mine = elOnly ? all : all.filter(p => !isElEv(p));  // passages de la note Bac
   const ok = mine.filter(p => !p.fail && p.tEnd != null);
   const bestP = ok.length ? ok.reduce((a, p) => teqOf(p) < teqOf(a) ? p : a) : null;
   const bestRel = bestP ? teqOf(bestP) : null, bestRelReal = bestP ? bestP.tEnd : null;
@@ -2146,10 +2175,20 @@ function result(c, sid, F) {
   const parts = [ind, col, et ? et.note : null];
   const total = parts.some(x => x != null) ? parts.reduce((a, x) => a + (x || 0), 0) : null;
   const its = mine.map(p => passIT(c, p)).filter(x => x != null);
-  const zl = kept.map(x => x.p.fail ? 0 : ztPts(x.p.gap)).filter(x => x != null);
+  // Zt : pour chaque passage retenu, son temps de zone, sinon le même passage chronométré par une tablette élève (même binôme, ±5 min)
+  const ztOf = p => p.fail ? (p.tIn != null ? 0 : null) : ztPts(p.gap), usedEl = new Set();
+  let zl = kept.map(({ p }) => {
+    const own = ztOf(p); if (own != null) return own;
+    const m = elP.filter(q => q.d === p.d && q.r === p.r && !usedEl.has(q.id) && Math.abs((q.endAt || q.ts) - (p.endAt || p.ts)) < 300000)
+      .sort((a, b) => Math.abs((a.endAt || a.ts) - (p.endAt || p.ts)) - Math.abs((b.endAt || b.ts) - (p.endAt || p.ts)))[0];
+    if (!m) return null; usedEl.add(m.id); return ztOf(m);
+  }).filter(x => x != null);
+  if (!zl.length && elP.length)                              // pas d'appariement possible : 4 meilleurs passages des tablettes élèves
+    zl = elP.map(p => ({ p, st: passStars(c, p), it: passIT(c, p) })).filter(x => x.st != null)
+      .sort((a, b) => b.st - a.st || (a.it ?? 99) - (b.it ?? 99)).slice(0, 4).map(x => ztOf(x.p)).filter(x => x != null);
   const zt = zl.length ? zl.reduce((a, b) => a + b, 0) * 2 / zl.length : null;   // moyenne /4 → /8
   const eps = total != null && zt != null ? (total + zt) * 12 / 20 : null;
-  return { zt, nZt: zl.length, eps, sid, s, sexe, b50, ind, mine, bestRel, bestRelReal, col, mixed, used, n, sum, stars, rate, et, total,
+  return { zt, nZt: zl.length, eps, elOnly, nEl: elP.length, sid, s, sexe, b50, ind, mine, bestRel, bestRelReal, col, mixed, used, n, sum, stars, rate, et, total,
     complete: parts.every(x => x != null) && n >= 2, nFail: mine.filter(p => p.fail).length,
     itMean: its.length ? its.reduce((a, b) => a + b, 0) / its.length : null };
 }
@@ -2182,7 +2221,7 @@ function renderBilan(keepFilters) {
       <td>${r.stars != null ? `<span class="st">${r.stars} ★</span><span class="sub">${r.used.join('+')}${r.n < 4 ? ` → ×4/${r.n}` : ''}</span>${r.n === 1 ? '<span class="flag">1 seule course</span>' : r.n < 4 ? '<span class="flag">extrapolé</span>' : ''}` : '–'}</td>
       <td>${r.et ? r.et.deg.n : '–'}</td>
       <td>${r.et ? `<select data-ov="${esc(r.sid)}" class="${r.et.manual ? 'manual' : ''}">${r.et.allowed.map(v => `<option value="${v}" ${v === r.et.note ? 'selected' : ''}>${fpt(v)}${v === r.et.auto ? ' (auto)' : ''}</option>`).join('')}</select><span class="sub">critères ${r.rate != null ? pct(r.rate, 1) + ' %' : '–'}</span>` : '–'}</td>
-      <td class="tot">${r.total != null ? fpt(Math.round(r.total * 100) / 100) : '–'}${r.total != null && !r.complete ? '<span class="flag">incomplet</span>' : ''}</td>
+      <td class="tot">${r.total != null ? fpt(Math.round(r.total * 100) / 100) : '–'}${r.total != null && !r.complete ? '<span class="flag">incomplet</span>' : ''}${r.elOnly ? '<span class="sub">temps tablettes élèves</span>' : ''}</td>
       <td>${r.zt != null ? fpt(Math.round(r.zt * 100) / 100) + `<span class="sub">${r.nZt} passage${r.nZt > 1 ? 's' : ''}</span>` : '<span class="sub">pas de chrono Zt</span>'}</td>
       <td class="tot eps">${r.eps != null ? fpt(Math.round(r.eps * 100) / 100) : '–'}</td>
     </tr>`).join('')}`;
@@ -2269,12 +2308,12 @@ $('#exp-xlsx').onclick = () => {
   const c = cls(); const R = renderBilan(true); const F = filtered(c); const st = stats(c, F.rel);
   const nm = (id, sn) => { const s = stu(c, id) || sn || {}; return [s.nom || '', s.prenom || '']; };
   const notes = [['Nom', 'Prénom', 'Sexe', 'Groupe', 'Meilleur 50 m (s)', 'Vitesse individuelle /3', 'Meilleur relais (s)', 'Relais équiv. 100 m (s)', 'Barème relais', 'Vitesse collective /3',
-    'Courses', 'Ratées', 'Étoiles retenues', 'Total étoiles /16', 'Extrapolé', 'Degré', '% critères', 'Efficacité technique /6', 'Ajusté', 'NOTE BAC /12', 'Zt /8 (moy. 4 passages retenus)', 'NOTE EPS /12', 'Complet']]
+    'Courses', 'Ratées', 'Étoiles retenues', 'Total étoiles /16', 'Extrapolé', 'Degré', '% critères', 'Efficacité technique /6', 'Ajusté', 'NOTE BAC /12', 'Zt /8 (moy. 4 passages retenus)', 'NOTE EPS /12', 'Complet', 'Note Bac sur temps élèves']]
     .concat([...R].sort((a, b) => (a.s.nom + a.s.prenom).localeCompare(b.s.nom + b.s.prenom, 'fr')).map(r => [
       r.s.nom, r.s.prenom, r.sexe, c.tg[r.sid] || '', sec(r.b50), r.ind ?? '', sec(r.bestRelReal), sec(r.bestRel), r.bestRel == null ? '' : r.mixed ? 'Mixte' : r.sexe === 'F' ? 'Filles' : r.sexe === 'G' ? 'Garçons' : '', r.col ?? '',
       r.mine.length, r.nFail, r.used.join('+'), r.stars ?? '', r.n && r.n < 4 ? `oui (${r.n} courses)` : '', r.et ? r.et.deg.n : '',
       r.rate != null ? pct(r.rate, 1) : '', r.et ? r.et.note : '', r.et && r.et.manual ? 'oui' : '',
-      r.total != null ? Math.round(r.total * 100) / 100 : '', r.zt != null ? Math.round(r.zt * 100) / 100 : '', r.eps != null ? Math.round(r.eps * 100) / 100 : '', r.complete ? 'oui' : 'non']));
+      r.total != null ? Math.round(r.total * 100) / 100 : '', r.zt != null ? Math.round(r.zt * 100) / 100 : '', r.eps != null ? Math.round(r.eps * 100) / 100 : '', r.complete ? 'oui' : 'non', r.elOnly ? 'oui' : '']));
   const rel = [['Date', 'Tablette', 'Démarreur – Nom', 'Démarreur – Prénom', 'Relayeur – Nom', 'Relayeur – Prénom', 'Distance (m)', 'Statut', 'Cause',
     'Temps (s)', 'Cible (s)', 'IT équiv. 100 m (s)', 'Étoiles', 'Entrée Zt (s)', 'Temps Zt (s)', 'V Zt (m/s)', 'V hors Zt (m/s)', 'Écart Zt (%)', ...crits(c).map(cr => cr.l),
     'Leçon', 'Groupe de travail', ...txs(c).map(t => t.l + (t.unit ? ` (${t.unit})` : ''))]]
